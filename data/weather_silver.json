@@ -1,0 +1,27 @@
+[
+    {
+        "condicao_clima": "Rain",
+        "descricao_clima": "chuva leve",
+        "visibilidade_m": 6424,
+        "data_hora": "2026-04-22T17:49:47.000Z",
+        "timezone": -10800,
+        "cidade": "Salvador",
+        "longitude": -38.5108,
+        "latitude": -12.9711,
+        "temperatura_c": 26.48,
+        "sensacao_termica_c": 26.48,
+        "temp_min_c": 26.48,
+        "temp_max_c": 26.48,
+        "pressao_hpa": 1012,
+        "umidade_pct": 78,
+        "vento_velocidade_ms": 6.82,
+        "vento_direcao_grau": 161,
+        "vento_rajada_ms": 7.54,
+        "nuvens_pct": 57,
+        "pais": "BR",
+        "nascer_sol": "2026-04-22T08:40:19.000Z",
+        "por_sol": "2026-04-22T20:24:26.000Z",
+        "chuva_1h_mm": 0.37,
+        "nivel_risco": "NORMAL"
+    }
+]
