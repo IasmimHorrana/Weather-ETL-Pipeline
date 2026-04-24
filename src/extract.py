@@ -36,7 +36,7 @@ def extract_weather_data(base_url: str) -> dict:
         return {}
 
     # 4. Persistência em disco
-    output_path = Path('data/weather_data.json')
+    output_path = Path(__file__).parent.parent / 'data' / 'weather_data.json'
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, 'w', encoding='utf-8') as f:
