@@ -1,0 +1,148 @@
+# =============================================================
+# docker-compose.yml — Fase 1: PostgreSQL
+# =============================================================
+# Nesta primeira fase, subimos APENAS o banco de dados.
+# Isso nos permite:
+#   1. Validar que o init.sql roda sem erros
+#   2. Testar o load.py manualmente contra um banco real
+#   3. Ter uma base sólida antes de adicionar Airflow e Metabase
+# =============================================================
+
+# Fase atual: Postgres + pgAdmin + MinIO (Fase 1 completa)
+
+services:
+
+  # ─────────────────────────────────────────
+  # SERVIÇO: minio
+  # ─────────────────────────────────────────
+  # Simula o Amazon S3 localmente para a camada Bronze (Landing Zone).
+  # O extract.py vai salvar o JSON bruto aqui antes de qualquer tratamento.
+  # Por que MinIO?
+  # - API 100% compatível com o S3 da AWS → trocar p/ produção real = só mudar credenciais
+  # - Console web em localhost:9001 para visualizar os arquivos salvos
+  minio:
+    image: minio/minio:latest
+    container_name: weather_minio
+    restart: unless-stopped
+    env_file:
+      - ../config/.env
+    ports:
+      - "9000:9000" # Porta da API S3 (usada pelo boto3 no Python)
+      - "9001:9001" # Porta do Console Web (acesse: localhost:9001)
+    command: server /data --console-address ":9001"
+    # 'server /data' → diretório onde os arquivos serão armazenados no contêiner
+    # '--console-address ":9001"' → habilita o painel web na porta 9001
+    volumes:
+      - minio_data:/data # Persiste os arquivos mesmo após `docker compose down`
+    healthcheck:
+      test: [ "CMD", "mc", "ready", "local" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - weather_network
+
+  # ─────────────────────────────────────────
+  # SERVIÇO: postgres
+  # ─────────────────────────────────────────
+  # Este é o banco de dados central do projeto.
+  # Ele vai receber os dados do load.py E também
+  # será o backend do Airflow e do Metabase nas próximas fases.
+  postgres:
+    image: postgres:15-alpine
+    # Por que postgres:15-alpine?
+    # - postgres:15 → versão LTS estável e amplamente usada no mercado
+    # - alpine      → imagem mínima (~80MB) baseada em Alpine Linux,
+    #                 muito mais leve que a imagem padrão (~400MB)
+
+    container_name: weather_postgres
+    # Nome fixo facilita debug: `docker logs weather_postgres`
+
+    restart: unless-stopped
+    # O contêiner reinicia automaticamente se cair (ex: após reiniciar o PC),
+    # exceto se você der `docker compose down` explicitamente.
+
+    env_file:
+      # Lemos todas as variáveis diretamente do seu arquivo config/.env central
+      - ../config/.env
+
+    ports:
+      - "5432:5432"
+      # Formato: "PORTA_DO_SEU_PC:PORTA_DO_CONTÊINER"
+      # Expõe a porta 5432 do contêiner para o seu sistema operacional.
+      # Isso permite que ferramentas externas (como o load.py rodando
+      # fora do Docker, ou o DBeaver/TablePlus) se conectem via localhost:5432.
+
+    volumes:
+      # Volume 1: PERSISTÊNCIA DE DADOS
+      # Mapeia uma pasta virtual chamada "postgres_data" (gerenciada pelo Docker)
+      # para dentro do contêiner. Sem isso, todos os dados seriam apagados
+      # toda vez que o contêiner fosse recriado.
+      - postgres_data:/var/lib/postgresql/data
+
+      # Volume 2: SCRIPT DE INICIALIZAÇÃO
+      # Mapeia nosso init.sql local para a pasta mágica do PostgreSQL.
+      # Qualquer arquivo .sql nessa pasta é executado automaticamente
+      # na primeira vez que o contêiner sobe com um volume vazio.
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+    healthcheck:
+      # O healthcheck permite que outros serviços (Airflow, Metabase) esperem
+      # o Postgres estar PRONTO antes de tentarem se conectar.
+      # Sem isso, o Airflow tentaria conectar antes do banco estar de pé e quebraria.
+      test: [ "CMD-SHELL", "pg_isready -U weather_user -d weather_db" ]
+      interval: 10s # Verifica a cada 10 segundos
+      timeout: 5s # Falha se não responder em 5s
+      retries: 5 # Tenta 5 vezes antes de marcar como "unhealthy"
+
+    networks:
+      - weather_network
+
+  # ─────────────────────────────────────────
+  # SERVIÇO: pgadmin
+  # ─────────────────────────────────────────
+  # Interface web gráfica para o PostgreSQL.
+  # Facilita a visualização do schema e dados durante o desenvolvimento.
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: weather_pgadmin
+    restart: unless-stopped
+    ports:
+      - "5050:80" # Você acessará o painel no navegador via localhost:5050
+    environment:
+      # Credenciais padrão para logar no painel web (fácil de lembrar p/ dev)
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    depends_on:
+      postgres:
+        condition: service_healthy # Só sobe o pgAdmin depois que o postgres estiver pronto
+    networks:
+      - weather_network
+# =============================================================
+# VOLUMES: Armazenamento persistente gerenciado pelo Docker
+# =============================================================
+volumes:
+  postgres_data:
+    # Os dados sobrevivem a: `docker compose restart`, `docker compose stop`.
+    # São apagados apenas com: `docker compose down -v` (o -v é o aviso).
+  minio_data: # Persiste os arquivos do bucket Bronze (JSONs brutos da API).
+  pgadmin_data:
+    # Persiste as conexões e preferências do pgAdmin entre recriações.
+
+
+    # =============================================================
+    # NETWORKS: Rede privada entre os serviços
+    # =============================================================
+
+
+    # =============================================================
+    # NETWORKS: Rede privada entre os serviços
+    # =============================================================
+networks:
+  weather_network:
+    driver: bridge
+    # "bridge" cria uma rede privada isolada.
+    # Os contêineres se comunicam pelo NOME DO SERVIÇO como hostname.
+    # Ex: nas Fases 2 e 3, Metabase e Airflow acessarão o banco via:
+    #     postgresql://weather_user:weather_pass@postgres:5432/weather_db
+    #     (note: "postgres" é o nome do serviço, não "localhost")
