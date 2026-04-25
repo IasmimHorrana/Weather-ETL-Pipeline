@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "boto3>=1.42.96",
     "pandas>=3.0.2",
     "psycopg2-binary>=2.9.12",
     "python-dotenv>=1.2.2",
