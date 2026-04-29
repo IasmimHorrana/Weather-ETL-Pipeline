@@ -2,7 +2,7 @@
 
 Pipeline de dados climáticos em tempo real. Coleta dados da [OpenWeather API](https://openweathermap.org/api), persiste o JSON bruto no **MinIO** (camada Bronze) e prepara a infraestrutura para transformação, análise e geração de alertas meteorológicos para **Salvador, BA**.
 
-> **Escopo atual:** Fase 1 — Extração e persistência na camada Bronze (MinIO).
+> **Escopo atual:** Fases 1, 2, 3 e 4 concluídas. Arquitetura Medalhão completa (MinIO → Postgres) e módulo de Alertas pronto. Próximos passos: Metabase e Airflow.
 
 ---
 
@@ -25,10 +25,10 @@ OpenWeather API
       ▼
   extract.py          ← Requisição HTTP + validação
       │
-      ├──► MinIO (Bronze)   ← JSON bruto / imutável  ✅ fase atual
+      ├──► MinIO (Bronze)   ← JSON bruto / imutável
       │    └── weather_data/YYYY-MM-DD/HH-MM-SS_salvador.json
       │
-      ├──► transform.py     ← Flattening, tipos, regras de negócio
+      ├──► transform.py     ← Limpeza e regras de negócio → MinIO (Silver)
       │
       ├──► load.py          ← PostgreSQL (tb_weather_history)
       │
@@ -162,6 +162,27 @@ O pipeline vai:
 3. Salvar o JSON bruto em `data/weather_data.json` (fallback local)
 4. Fazer upload para o MinIO em `weather-bronze/weather_data/YYYY-MM-DD/HH-MM-SS_salvador.json`
 
+### 6. Execute a transformação (Silver)
+
+```bash
+uv run python -m src.transform
+```
+> Busca automaticamente o arquivo mais recente da Bronze no MinIO, normaliza, aplica regras de risco e salva o resultado no bucket `silver`.
+
+### 7. Execute a carga (Gold)
+
+```bash
+uv run python -m src.load
+```
+> Busca o arquivo mais recente da Silver no MinIO e faz a inserção (append) no PostgreSQL garantindo atomicidade.
+
+### 8. Valide os Alertas
+
+```bash
+uv run python -m src.alertas
+```
+> Valida se há status `CRÍTICO` ou `ALERTA` e dispara mensagens via Telegram (requer credenciais no `.env`).
+
 ---
 
 ## 🖥️ Acessando os serviços
@@ -241,13 +262,10 @@ docker compose -f infra/docker-compose.yml down -v
 ## 🗺️ Roadmap
 
 - [x] Fase 1 — Extração da API e persistência no MinIO (Bronze)
-- [ ] Fase 2 — Transformação e normalização (Silver)
-- [ ] Fase 3 — Carga no PostgreSQL (Gold) e dashboard no Metabase
-- [ ] Fase 4 — Orquestração com Apache Airflow
-- [ ] Fase 5 — Alertas automáticos via Telegram
+- [x] Fase 2 — Transformação, regras de negócio e persistência no MinIO (Silver)
+- [x] Fase 3 — Carga atômica no banco relacional PostgreSQL (Gold / Histórico)
+- [x] Fase 4 — Alertas automáticos via Telegram com controle de falhas (Tenacity)
+- [ ] Fase 5 — Dashboard analítico no Metabase
+- [ ] Fase 6 — Orquestração do pipeline completo com Apache Airflow
 
----
 
-## 📄 Licença
-
-MIT
