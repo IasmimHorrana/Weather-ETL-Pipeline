@@ -25,7 +25,8 @@ logger = logging.getLogger(__name__)
 MINIO_ENDPOINT: str = os.getenv("MINIO_ENDPOINT", "")
 MINIO_ACCESS_KEY: str = os.getenv("MINIO_ROOT_USER", "")
 MINIO_SECRET_KEY: str = os.getenv("MINIO_ROOT_PASSWORD", "")
-BRONZE_BUCKET: str = os.getenv("MINIO_BRONZE_BUCKET", "")
+BRONZE_BUCKET: str = os.getenv("MINIO_BRONZE_BUCKET", "bronze")
+SILVER_BUCKET: str = os.getenv("MINIO_SILVER_BUCKET", "silver")
 
 
 @functools.lru_cache(maxsize=1)
@@ -36,6 +37,7 @@ def _get_s3_client():
         "MINIO_ROOT_USER": MINIO_ACCESS_KEY,
         "MINIO_ROOT_PASSWORD": MINIO_SECRET_KEY,
         "MINIO_BRONZE_BUCKET": BRONZE_BUCKET,
+        "MINIO_SILVER_BUCKET": SILVER_BUCKET,
     }
     ausentes = [nome for nome, valor in variaveis_obrigatorias.items() if not valor]
     if ausentes:
@@ -110,6 +112,36 @@ def upload_to_bronze(data: dict, city: str = "salvador") -> str | None:
         return None
 
 
+def upload_to_silver(data_json: str, object_key: str) -> str | None:
+    """
+    Persiste o JSON processado no bucket Silver.
+    
+    Retorna o object_key ou None em caso de falha.
+    """
+    if not data_json:
+        logger.error("Dados vazios recebidos — nada para salvar na Silver.")
+        return None
+
+    client = _get_s3_client()
+
+    try:
+        _ensure_bucket_exists(client, SILVER_BUCKET)
+
+        client.put_object(
+            Bucket=SILVER_BUCKET,
+            Key=object_key,
+            Body=data_json.encode("utf-8"),
+            ContentType="application/json",
+        )
+
+        logger.info(f"[Silver] Arquivo salvo: s3://{SILVER_BUCKET}/{object_key}")
+        return object_key
+
+    except ClientError as e:
+        logger.error(f"[Silver] Falha ao salvar no MinIO (Silver): {e}")
+        return None
+
+
 def download_from_bronze(object_key: str) -> dict[str, object]:
     """Baixa e desserializa um JSON do Bronze. Retorna {} em caso de falha."""
     if not object_key:
@@ -131,6 +163,25 @@ def download_from_bronze(object_key: str) -> dict[str, object]:
         return {}
 
 
+def download_from_silver(object_key: str) -> str:
+    """Baixa o JSON da camada Silver e o retorna como string. Retorna string vazia em caso de falha."""
+    if not object_key:
+        logger.error("[Silver] object_key não informado.")
+        return ""
+
+    client = _get_s3_client()
+
+    try:
+        response = client.get_object(Bucket=SILVER_BUCKET, Key=object_key)
+        raw_bytes = response["Body"].read()
+        logger.info(f"[Silver] Arquivo carregado: s3://{SILVER_BUCKET}/{object_key}")
+        return raw_bytes.decode("utf-8")
+
+    except ClientError as e:
+        logger.error(f"[Silver] Falha ao baixar do MinIO: {e}")
+        return ""
+
+
 def list_bronze_files(prefix: str = "weather_data/") -> list[str]:
     """Lista object keys no Bronze com o prefixo dado. Retorna [] em caso de falha."""
     client = _get_s3_client()
@@ -149,6 +200,27 @@ def list_bronze_files(prefix: str = "weather_data/") -> list[str]:
 
     except ClientError as e:
         logger.error(f"[Bronze] Falha ao listar arquivos: {e}")
+        return []
+
+
+def list_silver_files(prefix: str = "weather_silver/") -> list[str]:
+    """Lista object keys no Silver com o prefixo dado. Retorna [] em caso de falha."""
+    client = _get_s3_client()
+
+    try:
+        paginator = client.get_paginator("list_objects_v2")
+        files = []
+        for page in paginator.paginate(Bucket=SILVER_BUCKET, Prefix=prefix):
+            if "Contents" in page:
+                files.extend([obj["Key"] for obj in page["Contents"]])
+
+        logger.info(
+            f"[Silver] {len(files)} arquivo(s) encontrado(s) com prefixo '{prefix}'."
+        )
+        return files
+
+    except ClientError as e:
+        logger.error(f"[Silver] Falha ao listar arquivos: {e}")
         return []
 
 
