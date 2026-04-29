@@ -1,7 +1,7 @@
 [project]
 name = "weather-api"
 version = "0.1.0"
-description = "Add your description here"
+description = "Pipeline ETL de dados climáticos — OpenWeather → MinIO → PostgreSQL"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -15,5 +15,40 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "mypy>=1.20.2",
     "pytest>=9.0.3",
+    "ruff>=0.15.12",
+    "types-requests>=2.33.0.20260408",
 ]
+
+# ---------------------------------------------------------------------------
+# Ruff — Linter + Formatter
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",   # erros PEP8
+    "F",   # código morto: imports/variáveis não usados
+    "I",   # ordenação de imports
+    "UP",  # upgrades de sintaxe Python moderna
+    "RUF", # regras extras do Ruff
+]
+ignore = [
+    "E501", # linhas longas — o formatter cuida disso
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+
+# ---------------------------------------------------------------------------
+# MyPy — Verificador de Tipos Estático
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]
+strict = false          # começa relaxado; aumentar conforme o projeto amadurece
+warn_return_any = true
+warn_unused_ignores = true
+ignore_missing_imports = true
