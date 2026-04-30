@@ -1,18 +1,3 @@
-"""
-load.py — Camada de Carga (Load) do Pipeline ETL.
-
-Responsabilidade única: ler o JSON da Camada Silver e inserir
-os dados no PostgreSQL usando a estratégia APPEND (histórico).
-
-Decisões de Arquitetura:
-    - APPEND (if_exists='append'): cada execução adiciona novas linhas,
-      preservando o histórico completo para análise temporal no Metabase.
-    - Variável de ambiente DATABASE_URL: permite que o mesmo código funcione
-      tanto localmente (localhost) quanto dentro do Docker (nome do serviço).
-    - dtype explícito: garante que o Pandas não infira tipos errados ao
-      escrever no Postgres (ex: um inteiro sendo criado como BIGINT).
-"""
-
 import functools
 import io
 import logging
@@ -20,10 +5,8 @@ import os
 from pathlib import Path
 
 import pandas as pd
-from sqlalchemy import create_engine, text
-from sqlalchemy.types import Integer, Numeric, String
-
-from sqlalchemy.types import Integer, Numeric, String
+from sqlalchemy import create_engine, MetaData, Table
+from sqlalchemy.dialects.postgresql import insert
 
 from src.storage import download_from_silver
 
@@ -36,37 +19,8 @@ def _get_engine(db_url: str):
     """Cria e cacheia o engine SQLAlchemy. Singleton por URL."""
     return create_engine(db_url)
 
-# =============================================================
-# MAPEAMENTO DE TIPOS: Pandas → PostgreSQL
-# =============================================================
-# Sem esse mapa, o to_sql() infere os tipos e pode criar colunas
-# com tipos errados. Ex: VARCHAR sem limite de tamanho → TEXT.
-# Aqui forçamos os tipos exatos que declaramos no init.sql.
-DTYPE_MAP = {
-    "cidade": String(100),
-    "pais": String(5),
-    "latitude": Numeric(9, 6),
-    "longitude": Numeric(9, 6),
-    "temperatura_c": Numeric(5, 2),
-    "sensacao_termica_c": Numeric(5, 2),
-    "temp_min_c": Numeric(5, 2),
-    "temp_max_c": Numeric(5, 2),
-    "pressao_hpa": Integer(),
-    "umidade_pct": Integer(),
-    "visibilidade_m": Integer(),
-    "vento_velocidade_ms": Numeric(6, 2),
-    "vento_direcao_grau": Integer(),
-    "vento_rajada_ms": Numeric(6, 2),
-    "chuva_1h_mm": Numeric(7, 2),
-    "nuvens_pct": Integer(),
-    "condicao_clima": String(50),
-    "descricao_clima": String(100),
-    "nivel_risco": String(10),
-}
 
-# Colunas que o init.sql gerencia automaticamente (não enviamos pelo Pandas)
-# - 'id' → SERIAL PRIMARY KEY (auto-incremento)
-# - 'coletado_em' → DEFAULT NOW() (preenchido pelo banco)
+# Colunas que o init.sql gerencia automaticamente 
 COLUNAS_EXCLUIR = ["id", "coletado_em", "timezone"]
 
 
@@ -107,31 +61,31 @@ def load_silver_to_postgres(
         df = df.drop(columns=colunas_para_remover)
         logging.info(f"Colunas excluídas antes da carga: {colunas_para_remover}")
 
-    # 3. Filtra o dtype_map para conter apenas colunas que existem no df
-    dtype_para_uso = {col: tipo for col, tipo in DTYPE_MAP.items() if col in df.columns}
+    # 3. Inserção idêmpotente: ON CONFLICT DO NOTHING
 
-    # 4. Obtenção do engine e teste de conexão
-    logging.info("Estabelecendo conexão com o PostgreSQL...")
     try:
         engine = _get_engine(db_url)
-    except Exception as e:
-        logging.error(f"Não foi possível inicializar engine do banco: {e}")
-        return 0
+        meta = MetaData()
+        meta.reflect(bind=engine, only=["tb_weather_history"])
+        tabela = Table("tb_weather_history", meta)
 
-    # 5. Inserção atômica no banco
-    try:
-        with engine.begin() as conn:
-            df.to_sql(
-                name="tb_weather_history",
-                con=conn,
-                if_exists="append",
-                index=False,
-                dtype=dtype_para_uso,
-            )
-        logging.info(
-            f"[✔] Carga atômica finalizada! {len(df)} linha(s) adicionada(s) ao histórico."
+        registros = df.to_dict(orient="records")
+        stmt = insert(tabela).values(registros).on_conflict_do_nothing(
+            index_elements=["cidade", "data_hora"]
         )
-        return len(df)
+
+        with engine.begin() as conn:
+            resultado = conn.execute(stmt)
+
+        inseridas = resultado.rowcount
+        ignoradas = len(df) - inseridas
+
+        if ignoradas:
+            logging.info(f"[~] {ignoradas} linha(s) ignorada(s) por já existirem no banco.")
+        logging.info(
+            f"[✔] Carga finalizada! {inseridas} linha(s) adicionada(s) ao histórico."
+        )
+        return inseridas
 
     except Exception as e:
         logging.error(f"[X] Falha transacional ao carregar no banco de dados: {e}")
