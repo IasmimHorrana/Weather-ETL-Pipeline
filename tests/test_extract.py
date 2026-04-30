@@ -1,39 +1,8 @@
-"""
-test_extract.py — Testes unitários para o módulo src/extract.py
-
-Função testada: extract_weather_data(base_url: str) -> dict
-
-O que a função faz (e o que precisamos garantir que continue funcionando):
-    1. Faz GET na URL recebida
-    2. Retorna {} se a rede falhar (ConnectionError, Timeout, etc.)
-    3. Retorna {} se o status HTTP não for 200 (ex: 401, 404, 500)
-    4. Retorna {} se o JSON vier vazio
-    5. Salva o JSON em disco quando tudo ocorre bem
-    6. Retorna o dicionário completo em caso de sucesso
-
-Estratégia de Mock:
-    - `requests.get` → simulamos a resposta da API sem tocar na internet
-    - Escrita em disco → usamos a fixture `tmp_path` do pytest, que cria
-      uma pasta temporária exclusiva para cada teste e a apaga depois.
-      Isso evita poluir a pasta `data/` real do projeto durante os testes.
-
-Por que não testamos a URL real da OpenWeather API?
-    Testes que dependem de APIs externas são chamados de "testes de integração".
-    Eles são lentos, frágeis (quebram se a API sair do ar) e precisam de
-    chave de API configurada. O que queremos aqui são "testes unitários":
-    rápidos, isolados e determinísticos (sempre produzem o mesmo resultado).
-"""
-
-import json
 import pytest
+import requests as req_lib
 from unittest.mock import patch, MagicMock
 
-from src.extract import extract_weather_data
-
-
-# ─────────────────────────────────────────────
-# FIXTURES
-# ─────────────────────────────────────────────
+from src.extract import extract_weather_data, _save_local_fallback
 
 @pytest.fixture
 def payload_valido() -> dict:
@@ -50,7 +19,7 @@ def payload_valido() -> dict:
         "main": {
             "temp": 26.48, "feels_like": 27.2,
             "temp_min": 25.0, "temp_max": 28.0,
-            "pressure": 1012, "humidity": 85
+            "pressure": 1012, "humidity": 85,
         },
         "wind": {"speed": 6.82, "deg": 161, "gust": 7.54},
         "clouds": {"all": 57},
@@ -68,15 +37,23 @@ def payload_valido() -> dict:
 def mock_response_sucesso(payload_valido):
     """
     Cria um objeto Response "fantoche" que simula uma resposta 200 OK da API.
-
-    MagicMock cria um objeto que aceita qualquer atributo/método sem erros.
-    Configuramos os atributos que nossa função realmente acessa:
-    - .status_code → 200
-    - .json()      → retorna o payload real
+    raise_for_status() não faz nada (simula status 2xx).
     """
     mock = MagicMock()
     mock.status_code = 200
     mock.json.return_value = payload_valido
+    mock.raise_for_status.return_value = None  # Não levanta exceção
+    return mock
+
+
+def _make_error_response(status_code: int, text: str = "error"):
+    """Cria um mock de resposta HTTP com erro que levanta HTTPError em raise_for_status."""
+    mock = MagicMock()
+    mock.status_code = status_code
+    mock.text = text
+
+    http_err = req_lib.exceptions.HTTPError(response=mock)
+    mock.raise_for_status.side_effect = http_err
     return mock
 
 
@@ -84,160 +61,189 @@ def mock_response_sucesso(payload_valido):
 # TESTES
 # ─────────────────────────────────────────────
 
+
 class TestExtractWeatherData:
 
-    def test_sucesso_retorna_dicionario_com_dados(self, mock_response_sucesso, tmp_path, monkeypatch):
+    def test_sucesso_retorna_dados_e_object_key(self, mock_response_sucesso, payload_valido):
         """
-        CENÁRIO: API responde 200 OK com dados válidos.
-        ESPERADO: Função retorna o dicionário com os dados da cidade.
+        CENÁRIO: API responde 200 OK e upload ao MinIO funciona.
+        ESPERADO: Retorna (dict_com_dados, "alguma/chave.json").
 
-        `monkeypatch` é outra forma de substituir funções — mais seguro em alguns
-        contextos pois desfaz a substituição automaticamente após o teste.
-        Aqui usamos patch() via context manager para manter consistência com os outros testes.
+        A função agora retorna uma tupla (dados, object_key).
+        """
+        bronze_key = "weather_data/2026-04-30/10-00-00_salvador.json"
+
+        with patch("src.extract.requests.get", return_value=mock_response_sucesso):
+            with patch("src.extract.upload_to_bronze", return_value=bronze_key) as mock_upload:
+                dados, key = extract_weather_data("http://url-falsa.com")
+
+        assert isinstance(dados, dict)
+        assert dados.get("name") == "Salvador"
+        assert key == bronze_key
+        mock_upload.assert_called_once()
+
+    def test_sucesso_chama_upload_to_bronze_com_dados_corretos(self, mock_response_sucesso, payload_valido):
+        """
+        CENÁRIO: Extração bem-sucedida.
+        ESPERADO: upload_to_bronze é chamado com o dicionário retornado pela API
+        e com city='Salvador' (minusculo no nome da cidade).
+
+        Valida o CONTRATO entre extract.py e storage.py:
+        os dados brutos chegam intactos ao MinIO.
         """
         with patch("src.extract.requests.get", return_value=mock_response_sucesso):
-            # Redirecionamos o arquivo de saída para a pasta temporária do pytest
-            with patch("src.extract.Path") as mock_path:
-                mock_path.return_value.__truediv__ = lambda s, o: tmp_path / o
-                mock_path.return_value.parent.parent.__truediv__ = lambda s, o: tmp_path
-                resultado = extract_weather_data("http://url-falsa.com")
+            with patch("src.extract.upload_to_bronze", return_value="chave.json") as mock_upload:
+                extract_weather_data("http://url-falsa.com")
 
-        assert isinstance(resultado, dict)
-        assert resultado.get("name") == "Salvador"
+        call_kwargs = mock_upload.call_args
+        dados_enviados = call_kwargs[0][0] if call_kwargs[0] else call_kwargs[1].get("data")
+        assert dados_enviados.get("name") == "Salvador"
 
-    def test_sucesso_salva_arquivo_em_disco(self, mock_response_sucesso, payload_valido):
+    def test_minio_indisponivel_retorna_dados_e_none(self, mock_response_sucesso):
         """
-        CENÁRIO: API responde com sucesso.
-        ESPERADO: json.dump é chamado 1 vez com os dados corretos.
+        CENÁRIO: API da OpenWeather responde OK, mas o MinIO está fora do ar.
+        ESPERADO: Retorna (dados, None) — dados chegaram, mas não foram persistidos.
 
-        Ao invés de tentar criar um arquivo real (o que causou PermissionError
-        no Windows com o mock de Path), verificamos se a função de escrita
-        foi invocada com os dados esperados. Testamos a INTENÇÃO de salvar,
-        não o sistema de arquivos do SO.
+        O pipeline deve continuar (e logar warning), pois os dados ainda
+        podem ser usados pelo transform se o orquestrador passar os dados
+        diretamente em memória.
         """
         with patch("src.extract.requests.get", return_value=mock_response_sucesso):
-            # Mockamos Path para não precisar criar diretórios reais
-            with patch("src.extract.Path"):
-                # Mockamos json.dump para interceptar a chamada de escrita
-                with patch("src.extract.json.dump") as mock_dump:
-                    extract_weather_data("http://url-falsa.com")
+            with patch("src.extract.upload_to_bronze", return_value=None):
+                dados, key = extract_weather_data("http://url-falsa.com")
 
-        # Valida que json.dump foi chamado exatamente 1 vez
-        mock_dump.assert_called_once()
+        assert isinstance(dados, dict)
+        assert dados.get("name") == "Salvador"
+        assert key is None
 
-        # O primeiro argumento passado ao json.dump deve ser os dados da cidade
-        dados_passados = mock_dump.call_args[0][0]  # args[0] = primeiro argumento posicional
-        assert dados_passados.get("name") == "Salvador"
-
-    def test_erro_de_rede_retorna_dict_vazio(self):
+    def test_erro_de_rede_retorna_tuple_vazio(self):
         """
         CENÁRIO: Internet cai durante a requisição (ConnectionError).
-        ESPERADO: Função retorna {} SEM lançar exceção (pipeline não quebra).
-
-        Este é o cenário mais crítico em produção: o Airflow está
-        agendado para rodar às 08h e a internet cai às 07h59.
-        O sistema deve falhar com dignidade (graceful degradation).
-
-        CORREÇÃO: usamos requests.exceptions.RequestException (não Exception genérico),
-        porque o extract.py só trata esse tipo específico de erro de rede.
-        Lançar Exception genérico não seria capturado pelo `except RequestException`.
+        ESPERADO: Retorna ({}, None) SEM lançar exceção (pipeline não quebra).
         """
-        import requests as req_lib
         with patch("src.extract.requests.get",
                    side_effect=req_lib.exceptions.ConnectionError("Connection refused")):
-            resultado = extract_weather_data("http://url-falsa.com")
+            dados, key = extract_weather_data("http://url-falsa.com")
 
-        assert resultado == {}
+        assert dados == {}
+        assert key is None
 
-    def test_status_401_retorna_dict_vazio(self):
-        """
-        CENÁRIO: Chave de API inválida ou expirada (HTTP 401 Unauthorized).
-        ESPERADO: Retorna {} sem tentar parsear o corpo da resposta.
-
-        Um corpo de resposta 401 geralmente vem em HTML/texto, não JSON.
-        Se tentarmos .json() nele, quebraria. Nossa função checa o status
-        ANTES de parsear — este teste valida essa proteção.
-        """
-        mock = MagicMock()
-        mock.status_code = 401
-        mock.text = "Invalid API key"
-
-        with patch("src.extract.requests.get", return_value=mock):
-            resultado = extract_weather_data("http://url-falsa.com")
-
-        assert resultado == {}
-
-    def test_status_404_retorna_dict_vazio(self):
-        """
-        CENÁRIO: Cidade não encontrada na API (HTTP 404 Not Found).
-        ESPERADO: Retorna {} sem quebrar.
-        """
-        mock = MagicMock()
-        mock.status_code = 404
-        mock.text = "city not found"
-
-        with patch("src.extract.requests.get", return_value=mock):
-            resultado = extract_weather_data("http://url-falsa.com")
-
-        assert resultado == {}
-
-    def test_status_500_retorna_dict_vazio(self):
-        """
-        CENÁRIO: Servidor da OpenWeather está com erro interno (HTTP 500).
-        ESPERADO: Retorna {} sem quebrar.
-        """
-        mock = MagicMock()
-        mock.status_code = 500
-        mock.text = "Internal Server Error"
-
-        with patch("src.extract.requests.get", return_value=mock):
-            resultado = extract_weather_data("http://url-falsa.com")
-
-        assert resultado == {}
-
-    def test_resposta_json_vazia_retorna_dict_vazio(self):
-        """
-        CENÁRIO: API responde 200, mas o corpo JSON vem vazio (dict vazio).
-        ESPERADO: Retorna {} (nossa função checa `if not data`).
-
-        Raro, mas acontece em APIs instáveis. Melhor tratar do que deixar
-        o transform.py explodir tentando achatar um dict sem campos.
-        """
-        mock = MagicMock()
-        mock.status_code = 200
-        mock.json.return_value = {}  # Corpo vazio
-
-        with patch("src.extract.requests.get", return_value=mock):
-            resultado = extract_weather_data("http://url-falsa.com")
-
-        assert resultado == {}
-
-    def test_timeout_retorna_dict_vazio(self):
+    def test_timeout_retorna_tuple_vazio(self):
         """
         CENÁRIO: API demora mais de 10 segundos para responder (Timeout).
-        ESPERADO: Retorna {} sem travar o pipeline indefinidamente.
-
-        O timeout=10 que definimos no extract.py garante que a função
-        nunca fique pendurada por mais de 10 segundos. Este teste valida
-        que a exceção de timeout é tratada corretamente.
+        ESPERADO: Retorna ({}, None) sem travar o pipeline indefinidamente.
         """
-        import requests as req_lib
         with patch("src.extract.requests.get",
                    side_effect=req_lib.exceptions.Timeout("Timeout!")):
-            resultado = extract_weather_data("http://url-falsa.com")
+            dados, key = extract_weather_data("http://url-falsa.com")
 
-        assert resultado == {}
+        assert dados == {}
+        assert key is None
+
+    def test_status_401_retorna_tuple_vazio(self):
+        """
+        CENÁRIO: Chave de API inválida ou expirada (HTTP 401 Unauthorized).
+        ESPERADO: Retorna ({}, None).
+        """
+        mock = _make_error_response(401, "Invalid API key")
+
+        with patch("src.extract.requests.get", return_value=mock):
+            dados, key = extract_weather_data("http://url-falsa.com")
+
+        assert dados == {}
+        assert key is None
+
+    def test_status_404_retorna_tuple_vazio(self):
+        """
+        CENÁRIO: Cidade não encontrada na API (HTTP 404 Not Found).
+        ESPERADO: Retorna ({}, None).
+        """
+        mock = _make_error_response(404, "city not found")
+
+        with patch("src.extract.requests.get", return_value=mock):
+            dados, key = extract_weather_data("http://url-falsa.com")
+
+        assert dados == {}
+        assert key is None
+
+    def test_status_500_retorna_tuple_vazio(self):
+        """
+        CENÁRIO: Servidor da OpenWeather está com erro interno (HTTP 500).
+        ESPERADO: Retorna ({}, None).
+        """
+        mock = _make_error_response(500, "Internal Server Error")
+
+        with patch("src.extract.requests.get", return_value=mock):
+            dados, key = extract_weather_data("http://url-falsa.com")
+
+        assert dados == {}
+        assert key is None
+
+    def test_resposta_json_vazia_retorna_tuple_vazio(self):
+        """
+        CENÁRIO: API responde 200, mas o corpo JSON vem vazio (dict vazio).
+        ESPERADO: Retorna ({}, None).
+        """
+        mock = MagicMock()
+        mock.raise_for_status.return_value = None
+        mock.json.return_value = {}
+
+        with patch("src.extract.requests.get", return_value=mock):
+            dados, key = extract_weather_data("http://url-falsa.com")
+
+        assert dados == {}
+        assert key is None
 
     def test_retorno_contem_campo_name(self, mock_response_sucesso):
         """
         CENÁRIO: Extração bem-sucedida.
         ESPERADO: O dict retornado contém o campo 'name' (cidade).
 
-        Este teste valida o CONTRATO da função com o transform.py:
-        garantimos que o campo essencial para identificar a cidade está presente.
+        Valida o CONTRATO da função com o transform.py.
         """
         with patch("src.extract.requests.get", return_value=mock_response_sucesso):
-            with patch("src.extract.Path"):  # Ignora a escrita em disco
-                resultado = extract_weather_data("http://url-falsa.com")
+            with patch("src.extract.upload_to_bronze", return_value="chave.json"):
+                dados, _ = extract_weather_data("http://url-falsa.com")
 
-        assert "name" in resultado
+        assert "name" in dados
+
+
+class TestSaveLocalFallback:
+
+    def test_salva_arquivo_em_disco(self, tmp_path, payload_valido):
+        """
+        CENÁRIO: Desenvolvedor quer salvar fallback local.
+        ESPERADO: Arquivo JSON é criado no caminho especificado.
+        """
+        from src.extract import _save_local_fallback
+        destino = tmp_path / "weather_data.json"
+
+        _save_local_fallback(payload_valido, destino)
+
+        assert destino.exists()
+
+    def test_conteudo_do_arquivo_e_valido(self, tmp_path, payload_valido):
+        """
+        CENÁRIO: Fallback salvo em disco.
+        ESPERADO: Conteúdo do arquivo é JSON válido com os dados corretos.
+        """
+        import json
+        from src.extract import _save_local_fallback
+
+        destino = tmp_path / "weather_data.json"
+        _save_local_fallback(payload_valido, destino)
+
+        conteudo = json.loads(destino.read_text(encoding="utf-8"))
+        assert conteudo.get("name") == "Salvador"
+
+    def test_cria_diretorio_pai_se_nao_existir(self, tmp_path, payload_valido):
+        """
+        CENÁRIO: Diretório pai do arquivo não existe.
+        ESPERADO: Função cria os diretórios necessários antes de salvar.
+        """
+        from src.extract import _save_local_fallback
+
+        destino = tmp_path / "subdir" / "novo" / "weather_data.json"
+        _save_local_fallback(payload_valido, destino)
+
+        assert destino.exists()

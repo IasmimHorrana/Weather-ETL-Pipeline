@@ -1,41 +1,19 @@
-"""
-test_transform.py — Testes unitários para o módulo src/transform.py
-
-Funções testadas:
-    1. load_raw_json          → Carregamento de arquivo JSON
-    2. flatten_to_dataframe   → Achatamento do JSON aninhado
-    3. convert_timestamps_to_local → Conversão de Unix para datetime com fuso
-    4. validate_rain_schema   → Tratamento da coluna de chuva (campo opcional)
-    5. standardize_to_silver  → Drop de colunas + Rename para padrão Silver
-    6. calculate_risk_level   → Lógica de negócio: classificação de risco
-
-Estratégia:
-    - Funções puras (recebem dados, retornam dados) → testadas diretamente.
-    - Funções com I/O (leitura de arquivo, escrita) → uso de `tmp_path` e `patch`.
-    - Cada teste é independente: não depende do resultado de outro teste.
-
-Por que testar o transform.py em profundidade?
-    É o coração do pipeline. Uma mudança no rename_map ou nos limiares de risco
-    sem testes poderia silenciosamente corromper o histórico do banco de dados.
-"""
-
 import json
 import pytest
 import pandas as pd
+from unittest.mock import patch, MagicMock
 
 from src.transform import (
     load_raw_json,
+    load_from_bronze,
     flatten_to_dataframe,
     convert_timestamps_to_local,
     validate_rain_schema,
     standardize_to_silver,
     calculate_risk_level,
+    save_silver_data,
+    run_pipeline,
 )
-
-
-# ─────────────────────────────────────────────
-# FIXTURES: Dados reutilizáveis entre os testes
-# ─────────────────────────────────────────────
 
 @pytest.fixture
 def raw_json_completo() -> dict:
@@ -323,19 +301,19 @@ class TestStandardizeToSilver:
     def test_mapeamento_completo_de_colunas_essenciais(self, df_achatado):
         """
         ESPERADO: Todas as colunas do padrão Silver estão presentes após a transformação.
-        
+
         Este é um "contrato" entre o transform.py e o metabase/banco de dados:
         se qualquer coluna sumir, o dashboard quebra silenciosamente.
         """
-        colunas_esperadas = [
+        colunas_obrigatorias = [
             "cidade", "pais", "latitude", "longitude",
             "temperatura_c", "umidade_pct", "chuva_1h_mm",
-            "vento_velocidade_ms", "nivel_risco" if False else "condicao_clima",
+            "vento_velocidade_ms", "condicao_clima",
         ]
         df = validate_rain_schema(df_achatado)
         resultado = standardize_to_silver(df)
 
-        for col in ["cidade", "pais", "temperatura_c", "umidade_pct", "chuva_1h_mm"]:
+        for col in colunas_obrigatorias:
             assert col in resultado.columns, f"Coluna obrigatória '{col}' ausente na Camada Silver"
 
 
@@ -417,3 +395,172 @@ class TestCalculateRiskLevel:
         df = self._criar_df_risco(chuva=1.0, vento=2.0, umidade=50)
         calculate_risk_level(df)
         assert "nivel_risco" not in df.columns  # Original intocado
+
+
+# ─────────────────────────────────────────────
+# 7. TESTES: load_from_bronze
+# ─────────────────────────────────────────────
+
+class TestLoadFromBronze:
+    """Testa a leitura do JSON bruto direto do MinIO (modo produção)."""
+
+    def test_retorna_dados_do_minio(self, raw_json_completo):
+        """
+        CENÁRIO: object_key válida e MinIO retorna o JSON correto.
+        ESPERADO: Retorna o dicionário com os dados da API.
+        """
+        with patch("src.transform.download_from_bronze", return_value=raw_json_completo):
+            resultado = load_from_bronze("weather_data/2026-04-30/10-00-00_salvador.json")
+
+        assert isinstance(resultado, dict)
+        assert resultado.get("name") == "Salvador"
+
+    def test_minio_falha_retorna_dict_vazio(self):
+        """
+        CENÁRIO: MinIO está fora do ar (download_from_bronze retorna {}).
+        ESPERADO: load_from_bronze retorna {} sem quebrar.
+        """
+        with patch("src.transform.download_from_bronze", return_value={}):
+            resultado = load_from_bronze("chave_invalida.json")
+
+        assert resultado == {}
+
+
+# ─────────────────────────────────────────────
+# 8. TESTES: save_silver_data
+# ─────────────────────────────────────────────
+
+class TestSaveSilverData:
+    """Testa a exportação dos dados Silver para disco e MinIO."""
+
+    def test_salva_arquivo_local(self, tmp_path, df_silver):
+        """
+        CENÁRIO: DataFrame processado com caminho local disponível.
+        ESPERADO: Arquivo JSON é criado no caminho especificado.
+        """
+        destino = tmp_path / "weather_silver.json"
+
+        with patch("src.transform.upload_to_silver", return_value=None):
+            save_silver_data(df_silver, destino)
+
+        assert destino.exists()
+
+    def test_arquivo_local_tem_conteudo_json_valido(self, tmp_path, df_silver):
+        """
+        CENÁRIO: save_silver_data chamada com DataFrame válido.
+        ESPERADO: Conteúdo do arquivo é JSON legível.
+        """
+        import json
+        destino = tmp_path / "weather_silver.json"
+
+        with patch("src.transform.upload_to_silver", return_value=None):
+            save_silver_data(df_silver, destino)
+
+        conteudo = json.loads(destino.read_text(encoding="utf-8"))
+        assert isinstance(conteudo, list)
+        assert len(conteudo) == 1
+
+    def test_upload_minio_chamado_quando_bronze_key_fornecida(self, tmp_path, df_silver):
+        """
+        CENÁRIO: bronze_key é fornecida (modo produção).
+        ESPERADO: upload_to_silver é chamado 1 vez com a silver_key derivada.
+
+        A silver_key é gerada substituindo 'weather_data/' por 'weather_silver/'
+        na bronze_key, mantendo o mesmo particionamento de data/hora.
+        """
+        destino = tmp_path / "weather_silver.json"
+        bronze_key = "weather_data/2026-04-30/10-00-00_salvador.json"
+
+        with patch("src.transform.upload_to_silver", return_value="chave") as mock_silver:
+            save_silver_data(df_silver, destino, bronze_key=bronze_key)
+
+        mock_silver.assert_called_once()
+        silver_key_usada = mock_silver.call_args[0][1]  # 2º arg posicional = object_key
+        assert silver_key_usada.startswith("weather_silver/")
+
+    def test_upload_minio_nao_chamado_sem_bronze_key(self, tmp_path, df_silver):
+        """
+        CENÁRIO: Sem bronze_key (modo desenvolvimento / fallback local).
+        ESPERADO: upload_to_silver NÃO é chamado.
+        """
+        destino = tmp_path / "weather_silver.json"
+
+        with patch("src.transform.upload_to_silver") as mock_silver:
+            save_silver_data(df_silver, destino)  # Sem bronze_key
+
+        mock_silver.assert_not_called()
+
+
+# ─────────────────────────────────────────────
+# 9. TESTES: run_pipeline (Orquestrador)
+# ─────────────────────────────────────────────
+
+class TestRunPipeline:
+    """Testa o orquestrador que encadeia todas as transformações."""
+
+    def test_pipeline_modo_local_retorna_dataframe(self, tmp_path, raw_json_completo):
+        """
+        CENÁRIO: Modo local — JSON em disco, sem MinIO.
+        ESPERADO: run_pipeline retorna DataFrame com 'nivel_risco'.
+        """
+        import json
+        arquivo_entrada = tmp_path / "weather_data.json"
+        arquivo_saida = tmp_path / "weather_silver.json"
+        arquivo_entrada.write_text(json.dumps(raw_json_completo), encoding="utf-8")
+
+        with patch("src.transform.upload_to_silver", return_value=None):
+            resultado = run_pipeline(
+                input_path=arquivo_entrada,
+                output_path=arquivo_saida,
+            )
+
+        assert isinstance(resultado, pd.DataFrame)
+        assert "nivel_risco" in resultado.columns
+        assert "cidade" in resultado.columns
+
+    def test_pipeline_modo_local_cria_arquivo_silver(self, tmp_path, raw_json_completo):
+        """
+        CENÁRIO: run_pipeline executado no modo local.
+        ESPERADO: Arquivo Silver é criado em output_path.
+        """
+        import json
+        arquivo_entrada = tmp_path / "weather_data.json"
+        arquivo_saida = tmp_path / "weather_silver.json"
+        arquivo_entrada.write_text(json.dumps(raw_json_completo), encoding="utf-8")
+
+        with patch("src.transform.upload_to_silver", return_value=None):
+            run_pipeline(input_path=arquivo_entrada, output_path=arquivo_saida)
+
+        assert arquivo_saida.exists()
+
+    def test_pipeline_modo_producao_usa_bronze_key(self, tmp_path, raw_json_completo):
+        """
+        CENÁRIO: bronze_key fornecida → modo produção (lê do MinIO).
+        ESPERADO: load_from_bronze é chamado, retorna DataFrame válido.
+        """
+        arquivo_saida = tmp_path / "weather_silver.json"
+        bronze_key = "weather_data/2026-04-30/10-00-00_salvador.json"
+
+        with patch("src.transform.download_from_bronze", return_value=raw_json_completo):
+            with patch("src.transform.upload_to_silver", return_value=None):
+                resultado = run_pipeline(
+                    output_path=arquivo_saida,
+                    bronze_key=bronze_key,
+                )
+
+        assert isinstance(resultado, pd.DataFrame)
+        assert len(resultado) == 1
+
+    def test_pipeline_bronze_key_invalida_lanca_value_error(self, tmp_path):
+        """
+        CENÁRIO: bronze_key fornecida mas MinIO retorna {} (chave não existe).
+        ESPERADO: ValueError é levantado — o Airflow marcará a tarefa como FAILED.
+        """
+        arquivo_saida = tmp_path / "weather_silver.json"
+
+        with patch("src.transform.download_from_bronze", return_value={}):
+            with pytest.raises(ValueError, match="Falha ao carregar dado do Bronze"):
+                run_pipeline(
+                    output_path=arquivo_saida,
+                    bronze_key="chave_invalida.json",
+                )
