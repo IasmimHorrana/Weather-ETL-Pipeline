@@ -15,8 +15,7 @@ logging.basicConfig(
 # Usado apenas como FALLBACK local (sem MinIO no ar)
 DEFAULT_DATA_PATH = Path(__file__).parent.parent / "data" / "weather_data.json"
 
-# Configuração dos limites meteorológicos para definição de risco.
-# Valores podem ser extraídos para variáveis de ambiente futuramente.
+
 REGRAS_RISCO = {
     "chuva_critica_mm": 50.0,
     "vento_critico_ms": 15.0,
@@ -26,7 +25,7 @@ REGRAS_RISCO = {
 }
 
 
-# 1a. Função de Extração a partir do MinIO (Bronze) — modo produção
+# 1a. Função de Extração a partir do MinIO (Bronze) 
 def load_from_bronze(object_key: str) -> dict:
     """
     Lê o JSON bruto diretamente do bucket Bronze no MinIO.
@@ -112,7 +111,7 @@ def convert_timestamps_to_local(
     """Converte Unix Timestamps para horários locais, cuidando do fuso."""
     logging.info(f"Convertendo timestamps para o fuso horário: {timezone}")
 
-    # Criamos uma cópia para evitar warnings do Pandas (SettingWithCopyWarning)
+    # Criamos uma cópia para evitar warnings do Pandas
     df = df.copy()
 
     time_columns = ["dt", "sys.sunrise", "sys.sunset"]
