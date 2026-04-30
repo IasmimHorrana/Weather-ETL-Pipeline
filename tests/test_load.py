@@ -67,14 +67,22 @@ class TestLoadSilverToPostgres:
         ESPERADO: Retorna 1 (1 linha inserida).
         """
         engine, conn = mock_engine
+        conn.execute.return_value.rowcount = 1
+
+        mock_stmt = MagicMock()
+        mock_stmt.values.return_value.on_conflict_do_nothing.return_value = mock_stmt
+        mock_insert = MagicMock(return_value=mock_stmt)
+        mock_meta = MagicMock()
 
         with patch("src.load.download_from_silver", return_value=silver_json):
             with patch("src.load._get_engine", return_value=engine):
-                with patch.object(pd.DataFrame, "to_sql", return_value=None):
-                    resultado = load_silver_to_postgres(
-                        db_url=DB_URL,
-                        silver_key="weather_silver/2026-04-30/10-00-00_salvador.json",
-                    )
+                with patch("src.load.MetaData", return_value=mock_meta):
+                    with patch("src.load.Table", return_value=MagicMock()):
+                        with patch("src.load.insert", mock_insert):
+                            resultado = load_silver_to_postgres(
+                                db_url=DB_URL,
+                                silver_key="weather_silver/2026-04-30/10-00-00_salvador.json",
+                            )
 
         assert resultado == 1
 
@@ -84,12 +92,19 @@ class TestLoadSilverToPostgres:
         ESPERADO: Retorna 1 (1 linha inserida do arquivo local).
         """
         engine, conn = mock_engine
+        conn.execute.return_value.rowcount = 1
         arquivo = tmp_path / "weather_silver.json"
         arquivo.write_text(silver_json, encoding="utf-8")
 
+        mock_stmt = MagicMock()
+        mock_stmt.values.return_value.on_conflict_do_nothing.return_value = mock_stmt
+        mock_insert = MagicMock(return_value=mock_stmt)
+
         with patch("src.load._get_engine", return_value=engine):
-            with patch.object(pd.DataFrame, "to_sql", return_value=None):
-                resultado = load_silver_to_postgres(db_url=DB_URL, input_path=arquivo)
+            with patch("src.load.MetaData", return_value=MagicMock()):
+                with patch("src.load.Table", return_value=MagicMock()):
+                    with patch("src.load.insert", mock_insert):
+                        resultado = load_silver_to_postgres(db_url=DB_URL, input_path=arquivo)
 
         assert resultado == 1
 
@@ -125,33 +140,37 @@ class TestLoadSilverToPostgres:
     def test_colunas_gerenciadas_pelo_banco_sao_removidas(self, silver_json, mock_engine):
         """
         CENÁRIO: JSON Silver contém id, coletado_em, timezone.
-        ESPERADO: to_sql é chamado com DataFrame sem essas colunas.
-
-        O banco gerencia essas colunas automaticamente (SERIAL, DEFAULT NOW()).
-        Enviá-las causaria conflito de tipo ou violação de constraint.
+        ESPERADO: O dict enviado ao insert não contém essas colunas.
         """
         engine, conn = mock_engine
-        df_recebido = {}
+        conn.execute.return_value.rowcount = 1
+        registros_recebidos = {}
 
-        # Captura o DataFrame que seria passado ao to_sql
-        original_to_sql = pd.DataFrame.to_sql
+        mock_stmt_final = MagicMock()
+        mock_stmt_final.on_conflict_do_nothing.return_value = mock_stmt_final
 
-        def capturar_df(self, *args, **kwargs):
-            df_recebido["df"] = self
-            return None
+        mock_stmt_base = MagicMock()
+        mock_stmt_base.values.side_effect = lambda registros: (
+            registros_recebidos.update({"dados": registros}) or mock_stmt_final
+        )
+
+        mock_insert = MagicMock(return_value=mock_stmt_base)
 
         with patch("src.load.download_from_silver", return_value=silver_json):
             with patch("src.load._get_engine", return_value=engine):
-                with patch.object(pd.DataFrame, "to_sql", capturar_df):
-                    load_silver_to_postgres(
-                        db_url=DB_URL,
-                        silver_key="chave.json",
-                    )
+                with patch("src.load.MetaData", return_value=MagicMock()):
+                    with patch("src.load.Table", return_value=MagicMock()):
+                        with patch("src.load.insert", mock_insert):
+                            load_silver_to_postgres(
+                                db_url=DB_URL,
+                                silver_key="chave.json",
+                            )
 
-        df = df_recebido.get("df")
-        assert df is not None
+        dados = registros_recebidos.get("dados")
+        assert dados is not None
         for col in COLUNAS_EXCLUIR:
-            assert col not in df.columns, f"Coluna '{col}' não deveria estar no insert"
+            for row in dados:
+                assert col not in row, f"Coluna '{col}' não deveria estar no insert"
 
     def test_erro_no_banco_retorna_zero(self, silver_json):
         """
