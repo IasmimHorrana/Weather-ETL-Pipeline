@@ -28,6 +28,20 @@ x-airflow-common: &airflow-common
     # ── Logging ───────────────────────────────────────────────
     AIRFLOW__LOGGING__LOG_LEVEL: INFO
 
+    # ── Python Path ───────────────────────────────────────────
+    # Permite que as tasks importem de src.* (ex: from src.extract import ...)
+    # O volume ../src:/opt/airflow/src monta o código, mas o Python precisa
+    # saber que deve procurar módulos a partir de /opt/airflow/.
+    PYTHONPATH: /opt/airflow
+
+    # ── Endereços internos da rede Docker ─────────────────────
+    # Dentro de um container, "localhost" aponta para o próprio container.
+    # Para falar com MinIO e Postgres, usamos o NOME DO SERVIÇO como hostname.
+    # Isso sobrescreve os valores do .env (que têm localhost e funcionam
+    # apenas quando rodando scripts fora do Docker, no terminal).
+    MINIO_ENDPOINT: http://minio:9000
+    DATABASE_URL: postgresql://weather_user:weather_pass@postgres:5432/weather_db
+
   volumes:
     # DAGs: o Scheduler lê desta pasta para montar o grafo
     - ../dags:/opt/airflow/dags
