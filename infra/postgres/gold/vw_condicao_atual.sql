@@ -1,8 +1,3 @@
--- vw_gold_condicao_atual
--- Retorna APENAS a leitura mais recente de cada cidade.
--- Uso no Metabase: cards de "Condição Atual" no topo do dashboard —
--- um card por cidade mostrando temperatura, risco e descrição do clima agora.
-
 CREATE OR REPLACE VIEW vw_gold_condicao_atual AS
 SELECT DISTINCT ON (cidade)
     cidade,

@@ -1,14 +1,12 @@
--- vw_gold_tendencia_temperatura
--- Série temporal de temperatura com média móvel de 3 leituras.
--- Uso no Metabase: gráfico de linha — temperatura real vs. tendência suavizada.
--- A média móvel elimina os picos instantâneos e revela o comportamento real do dia.
-
 CREATE OR REPLACE VIEW vw_gold_tendencia_temperatura AS
 SELECT
     data_hora,
     cidade,
     temperatura_c,
     sensacao_termica_c,
+    temp_min_c,
+    temp_max_c,
+    chuva_1h_mm,
     -- Média móvel das últimas 3 leituras (suaviza oscilações da API)
     ROUND(
         AVG(temperatura_c) OVER (

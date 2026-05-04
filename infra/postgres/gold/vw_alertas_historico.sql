@@ -1,8 +1,3 @@
--- vw_gold_alertas_historico
--- Filtra apenas os eventos de risco elevado (CRÍTICO ou ALERTA).
--- Uso no Metabase: tabela de eventos críticos com drill-down por cidade e data.
--- Também alimenta o painel de "Histórico de Incidentes".
-
 CREATE OR REPLACE VIEW vw_gold_alertas_historico AS
 SELECT
     data_hora,

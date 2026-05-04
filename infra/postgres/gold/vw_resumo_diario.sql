@@ -1,8 +1,3 @@
--- vw_gold_resumo_diario
--- Agrega as leituras por dia e cidade.
--- Uso no Metabase: gráfico de barras com temperatura média, chuva total e
--- rajadas máximas — ideal para o painel de "Resumo do Dia".
-
 CREATE OR REPLACE VIEW vw_gold_resumo_diario AS
 SELECT
     DATE(data_hora AT TIME ZONE 'America/Bahia')    AS data,
