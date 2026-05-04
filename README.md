@@ -1,8 +1,8 @@
 # 🌦️ Weather ETL Pipeline — Salvador
 
-Pipeline de dados climáticos em tempo real. Coleta dados da [OpenWeather API](https://openweathermap.org/api), persiste o JSON bruto no **MinIO** (camada Bronze), transforma e enriquece os dados (Silver), carrega no **PostgreSQL** com camada analítica Gold e dispara alertas via **Telegram**.
+Pipeline de dados climáticos em tempo real orquestrado pelo **Apache Airflow**. Coleta dados da [OpenWeather API](https://openweathermap.org/api) a cada hora, persiste o JSON bruto no **MinIO** (Bronze), transforma e enriquece os dados (Silver), carrega no **PostgreSQL** com views analíticas (Gold) e dispara alertas automáticos via **Telegram**.
 
-> **Escopo atual:** Fases 1 a 4 concluídas. Arquitetura Medallion completa (MinIO → PostgreSQL + views Gold) e módulo de Alertas operacional. Infraestrutura do Airflow iniciada. Próximos passos: Metabase e orquestração completa com Airflow.
+> **Escopo atual:** Fases 1 a 6 concluídas. Arquitetura Medallion completa (MinIO → PostgreSQL + views Gold), módulo de Alertas operacional e pipeline orquestrado pelo Airflow com coleta horária automatizada. Próximo passo: Dashboard no Metabase.
 
 ---
 
@@ -10,7 +10,7 @@ Pipeline de dados climáticos em tempo real. Coleta dados da [OpenWeather API](h
 
 Monitorar condições climáticas de Salvador com foco em:
 
-- Coleta automatizada via API (OpenWeatherMap)
+- Coleta **automatizada e horária** via API (OpenWeatherMap) — orquestrada pelo Airflow
 - Armazenamento bruto imutável (Bronze / Landing Zone no MinIO)
 - Transformação, normalização e regras de negócio (Silver)
 - Persistência histórica e views analíticas no PostgreSQL (Gold)
@@ -22,6 +22,12 @@ Monitorar condições climáticas de Salvador com foco em:
 ## 🏗️ Arquitetura
 
 ```
+                    ┌─────────────────────────────┐
+                    │  Apache Airflow (@hourly)    │
+                    │  Scheduler + Webserver       │
+                    └──────────────┬──────────────┘
+                                   │ orquestra
+                                   ▼
 OpenWeather API
       │
       ▼
@@ -56,8 +62,11 @@ OpenWeather API
 | Serviço | Imagem | Porta | Função |
 |---------|--------|-------|--------|
 | **MinIO** | `minio/minio:latest` | `9000` / `9001` | Object storage S3-compatível (Bronze e Silver) |
-| **PostgreSQL** | `postgres:15-alpine` | `5432` | Banco de dados principal (Gold / Histórico) |
+| **PostgreSQL** | `postgres:15-alpine` | `5432` | Banco de dados principal (Gold / Histórico + metadata Airflow) |
 | **pgAdmin** | `dpage/pgadmin4` | `5050` | Interface web para o PostgreSQL |
+| **Airflow Webserver** | `infra-airflow` (custom) | `8080` | UI de monitoramento e controle das DAGs |
+| **Airflow Scheduler** | `infra-airflow` (custom) | — | Motor de agendamento e execução (LocalExecutor) |
+| **Airflow Init** | `infra-airflow` (custom) | — | Serviço efêmero: migra o banco e cria o usuário admin |
 
 ### Python
 
@@ -66,7 +75,7 @@ OpenWeather API
 | `requests` | 2.33.1 | Requisições HTTP para a OpenWeather API |
 | `boto3` | 1.42.96 | Cliente S3 para comunicação com o MinIO |
 | `python-dotenv` | 1.2.2 | Carregamento das variáveis de ambiente do `.env` |
-| `pandas` | 3.0.2 | Transformação e normalização dos dados (Silver) |
+| `pandas` | 2.1.4 | Transformação e normalização dos dados (Silver) |
 | `sqlalchemy` | 2.0.49 | ORM / conexão com o PostgreSQL |
 | `psycopg2-binary` | 2.9.12 | Driver PostgreSQL para o SQLAlchemy |
 | `tenacity` | 9.1.4 | Retries automáticos (alertas e requisições HTTP) |
@@ -100,8 +109,8 @@ OpenWeather API
 ### 1. Clone o repositório
 
 ```bash
-git clone https://github.com/seu-usuario/weather-api.git
-cd weather-api
+git clone https://github.com/IasmimHorrana/Weather-ETL-Pipeline.git
+cd Weather-ETL-Pipeline
 ```
 
 ### 2. Configure as variáveis de ambiente
@@ -116,7 +125,7 @@ Abra `config/.env` e preencha:
 
 ```dotenv
 # ── OpenWeather ──────────────────────────────────────────
-OPENWEATHER_API_KEY=sua_chave_aqui
+API_KEY=sua_chave_aqui
 OPENWEATHER_CITY=Salvador
 
 # ── MinIO (Object Storage) ───────────────────────────────
@@ -138,81 +147,63 @@ TELEGRAM_CHAT_ID=seu_chat_id_aqui
 
 > **Importante:** o arquivo `config/.env` está no `.gitignore` e nunca deve ser commitado.
 
-### 3. Suba a infraestrutura com Docker
+### 3. Build e inicialização da infraestrutura
+
+Na **primeira execução**, é necessário fazer o build da imagem customizada do Airflow:
 
 ```bash
+# Build da imagem do Airflow com as libs do projeto
+docker compose -f infra/docker-compose.yml build
+
+# Sobe todos os serviços em segundo plano
 docker compose -f infra/docker-compose.yml up -d
 ```
 
-Aguarde os serviços ficarem saudáveis. Verifique com:
+> O serviço `airflow-init` roda automaticamente na primeira vez, cria o banco interno do Airflow (`airflow_db`) e o usuário `admin`. Ele encerra sozinho após ~30 segundos — isso é esperado.
+
+Verifique o status com:
 
 ```bash
 docker compose -f infra/docker-compose.yml ps
 ```
 
-Todos devem aparecer com status `healthy` ou `running`.
+Todos devem aparecer como `healthy` ou `running` (exceto o `airflow-init`, que deve aparecer como `Exited`).
 
-### 4. Instale as dependências Python
+### 4. Instale as dependências Python (modo desenvolvimento)
 
 ```bash
 uv sync
 ```
 
-### 5. Execute a extração (Bronze)
+### 5. Pipeline automático via Airflow (modo produção)
+
+Com a infraestrutura rodando, o Airflow já agenda e executa o pipeline automaticamente **a cada hora**. Acesse a UI para monitorar:
+
+**→ [http://localhost:8080](http://localhost:8080)** — login: `admin` / `admin`
+
+O DAG `coleta_salvador` executa 5 tasks em sequência a cada hora:
+
+| Task | O que faz |
+|------|-----------|
+| `extract_bronze` | Busca o clima de Salvador na API → salva JSON no MinIO (Bronze) |
+| `transform_silver` | Normaliza, calcula nível de risco → salva no MinIO (Silver) |
+| `load_historico` | Insere os dados no PostgreSQL (idempotente) |
+| `apply_gold_views` | Recria as views analíticas no PostgreSQL |
+| `dispara_alertas` | Verifica condições críticas → envia alerta no Telegram se necessário |
+
+### 6. Execução manual dos módulos (modo desenvolvimento)
+
+Para rodar etapas individualmente sem o Airflow:
+
+> ⚠️ **Sempre rode da raiz do projeto** (`weather-api/`).
 
 ```bash
-uv run python -m src.extract
+uv run python -m src.extract    # Extração → MinIO Bronze
+uv run python -m src.transform  # Transformação → MinIO Silver
+uv run python -m src.load       # Carga → PostgreSQL
+uv run python -m src.gold       # Views analíticas → PostgreSQL
+uv run python -m src.alertas    # Verificação de alertas → Telegram
 ```
-
-> ⚠️ **Sempre rode da raiz do projeto** (`weather-api/`). O import `from src.storage` exige que o Python enxergue a pasta `src/` como pacote — isso só acontece quando o CWD é a raiz.
-
-O pipeline vai:
-1. Ler a `API_KEY` do `config/.env`
-2. Chamar a OpenWeather API para **Salvador, BR**
-3. Salvar o JSON bruto em `data/weather_data.json` (fallback local)
-4. Fazer upload para o MinIO em `bronze/weather_data/YYYY-MM-DD/HH-MM-SS_salvador.json`
-
-### 6. Execute a transformação (Silver)
-
-```bash
-uv run python -m src.transform
-```
-
-> Busca automaticamente o arquivo mais recente da Bronze no MinIO, normaliza, aplica regras de risco e salva o resultado no bucket `silver`.
-
-### 7. Execute a carga (Gold — tabela histórica)
-
-```bash
-uv run python -m src.load
-```
-
-> Busca o arquivo mais recente da Silver no MinIO e faz inserção idempotente no PostgreSQL (`tb_weather_history`). Registros duplicados são ignorados automaticamente (`ON CONFLICT DO NOTHING`).
-
-### 8. Aplique as views analíticas (Gold — views)
-
-```bash
-uv run python -m src.gold
-```
-
-> Lê todos os arquivos `.sql` de `infra/postgres/gold/` e aplica as views no PostgreSQL. Execute sempre que quiser recriar ou atualizar as views para o Metabase.
-
-As views criadas são:
-
-| View                       | Descrição                              |
-|----------------------------|----------------------------------------|
-| `vw_condicao_atual`        | Registro mais recente coletado         |
-| `vw_resumo_diario`         | Agregados diários (min/max/média)      |
-| `vw_tendencia_temperatura` | Série temporal de temperatura          |
-| `vw_estatisticas_mensais`  | Estatísticas agrupadas por mês         |
-| `vw_alertas_historico`     | Histórico de eventos com risco elevado |
-
-### 9. Valide os Alertas
-
-```bash
-uv run python -m src.alertas
-```
-
-> Valida se há status `CRÍTICO` ou `ALERTA` e dispara mensagens via Telegram (requer `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` no `.env`).
 
 ---
 
@@ -220,15 +211,15 @@ uv run python -m src.alertas
 
 | Serviço | URL | Credenciais |
 |---------|-----|-------------|
+| **Airflow UI** | [http://localhost:8080](http://localhost:8080) | `admin` / `admin` |
 | **MinIO Console** | [http://localhost:9001](http://localhost:9001) | `minioadmin` / `minioadmin123` |
 | **pgAdmin** | [http://localhost:5050](http://localhost:5050) | `admin@admin.com` / `admin` |
 
 ### Verificando os dados no MinIO
 
 1. Acesse [http://localhost:9001](http://localhost:9001)
-2. Faça login com as credenciais acima
-3. Navegue até o bucket `bronze`
-4. Os arquivos seguem o padrão: `weather_data/YYYY-MM-DD/HH-MM-SS_salvador.json`
+2. Navegue até o bucket `bronze`
+3. Os arquivos seguem o padrão: `weather_data/YYYY-MM-DD/HH-MM-SS_salvador.json`
 
 ---
 
@@ -236,18 +227,23 @@ uv run python -m src.alertas
 
 ```
 weather-api/
+├── .github/
+│   └── workflows/
+│       ├── ci.yml                      # Pipeline de CI (em desenvolvimento)
+│       └── cd.yml                      # Pipeline de CD (em desenvolvimento)
 ├── config/
-│   ├── .env                        # Variáveis de ambiente (não commitado)
-│   └── .env.example                # Template com todas as variáveis necessárias
+│   ├── .env                            # Variáveis de ambiente (não commitado)
+│   └── .env.example                    # Template com todas as variáveis necessárias
 ├── dags/
-│   └── dag_coleta_salvador.py      # DAG do Apache Airflow (em desenvolvimento)
+│   └── dag_coleta_salvador.py          # DAG do Airflow — 5 tasks, @hourly, PythonOperator
 ├── infra/
-│   ├── docker-compose.yml          # MinIO + PostgreSQL + pgAdmin
+│   ├── docker-compose.yml              # Stack completa: MinIO + Postgres + pgAdmin + Airflow
 │   ├── airflow/
-│   │   └── Dockerfile              # Imagem customizada do Airflow (em desenvolvimento)
+│   │   └── Dockerfile                  # Imagem customizada Airflow 2.10.5 + libs do projeto
 │   └── postgres/
-│       ├── init.sql                # Schema inicial: tb_weather_history + constraints
-│       └── gold/                   # Views analíticas da camada Gold
+│       ├── 00_init_airflow.sh          # Cria o airflow_db no primeiro boot do Postgres
+│       ├── init.sql                    # Schema: tb_weather_history + índices + constraints
+│       └── gold/                       # Views analíticas da camada Gold
 │           ├── vw_condicao_atual.sql
 │           ├── vw_resumo_diario.sql
 │           ├── vw_tendencia_temperatura.sql
@@ -255,12 +251,12 @@ weather-api/
 │           └── vw_alertas_historico.sql
 ├── src/
 │   ├── __init__.py
-│   ├── extract.py                  # Extração da API → MinIO (Bronze)
-│   ├── storage.py                  # Abstração do MinIO (upload/download/list)
-│   ├── transform.py                # Normalização e regras de negócio → MinIO (Silver)
-│   ├── load.py                     # Carga idempotente no PostgreSQL
-│   ├── gold.py                     # Aplica views analíticas no PostgreSQL (Gold)
-│   └── alertas.py                  # Notificações Telegram com retry (Tenacity)
+│   ├── extract.py                      # Extração da API → MinIO (Bronze)
+│   ├── storage.py                      # Abstração do MinIO (upload/download/list)
+│   ├── transform.py                    # Normalização e regras de negócio → MinIO (Silver)
+│   ├── load.py                         # Carga idempotente no PostgreSQL
+│   ├── gold.py                         # Aplica views analíticas no PostgreSQL (Gold)
+│   └── alertas.py                      # Notificações Telegram com retry (Tenacity)
 ├── tests/
 │   ├── test_extract.py
 │   ├── test_transform.py
@@ -268,10 +264,10 @@ weather-api/
 │   ├── test_gold.py
 │   ├── test_storage.py
 │   └── test_alertas.py
-├── data/                           # JSONs locais (fallback de dev, no .gitignore)
-├── notebooks/                      # Análise exploratória
-├── conftest.py                     # Configuração e fixtures do pytest
-└── pyproject.toml                  # Dependências e configuração das ferramentas
+├── data/                               # JSONs locais (fallback de dev, no .gitignore)
+├── notebooks/                          # Análise exploratória
+├── conftest.py                         # Configuração e fixtures do pytest
+└── pyproject.toml                      # Dependências e configuração das ferramentas
 ```
 
 ---
@@ -288,9 +284,6 @@ uv run ruff check --fix src/
 uv run ruff format src/
 
 # Rodar os testes
-uv run pytest
-
-# Rodar testes com cobertura (verbose)
 uv run pytest -v
 ```
 
@@ -302,9 +295,11 @@ uv run pytest -v
 # Para os contêineres (dados preservados)
 docker compose -f infra/docker-compose.yml down
 
-# Para os contêineres E apaga os volumes (dados perdidos)
+# Para os contêineres E apaga os volumes (dados perdidos — use com cuidado)
 docker compose -f infra/docker-compose.yml down -v
 ```
+
+> ⚠️ O flag `-v` apaga o histórico do banco e os arquivos do MinIO. Use apenas para reset completo do ambiente.
 
 ---
 
@@ -314,5 +309,5 @@ docker compose -f infra/docker-compose.yml down -v
 - [x] Fase 2 — Transformação, regras de negócio e persistência no MinIO (Silver)
 - [x] Fase 3 — Carga idempotente no PostgreSQL + views analíticas (Gold)
 - [x] Fase 4 — Alertas automáticos via Telegram com retry (Tenacity)
+- [x] Fase 6 — Orquestração do pipeline com Apache Airflow (coleta horária automatizada)
 - [ ] Fase 5 — Dashboard analítico no Metabase
-- [ ] Fase 6 — Orquestração completa do pipeline com Apache Airflow
