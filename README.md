@@ -1,4 +1,4 @@
-# 🌦️ Weather ETL Pipeline — Salvador
+# Weather ETL Pipeline — Salvador
 
 Pipeline de dados climáticos em tempo real orquestrado pelo **Apache Airflow**. Coleta dados da [OpenWeather API](https://openweathermap.org/api) a cada hora, persiste o JSON bruto no **MinIO** (Bronze), transforma e enriquece os dados (Silver), carrega no **PostgreSQL** com views analíticas (Gold) e dispara alertas automáticos via **Telegram**.
 
@@ -249,7 +249,7 @@ weather-api/
 │           ├── vw_condicao_atual.sql
 │           ├── vw_resumo_diario.sql
 │           ├── vw_tendencia_temperatura.sql
-│           ├── vw_estatisticas_mensais.sql
+│           ├── vw_estatisticas_semanais.sql
 │           └── vw_alertas_historico.sql
 ├── src/
 │   ├── __init__.py
