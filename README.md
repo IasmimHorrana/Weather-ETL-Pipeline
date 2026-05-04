@@ -2,7 +2,7 @@
 
 Pipeline de dados climáticos em tempo real orquestrado pelo **Apache Airflow**. Coleta dados da [OpenWeather API](https://openweathermap.org/api) a cada hora, persiste o JSON bruto no **MinIO** (Bronze), transforma e enriquece os dados (Silver), carrega no **PostgreSQL** com views analíticas (Gold) e dispara alertas automáticos via **Telegram**.
 
-> **Escopo atual:** Fases 1 a 6 concluídas. Arquitetura Medallion completa (MinIO → PostgreSQL + views Gold), módulo de Alertas operacional e pipeline orquestrado pelo Airflow com coleta horária automatizada. Próximo passo: Dashboard no Metabase.
+> **Escopo atual:** Fases 1 a 6 concluídas. Arquitetura Medallion completa (MinIO → PostgreSQL + views Gold), módulo de Alertas operacional, pipeline orquestrado pelo Airflow e Dashboard Analítico no Metabase. Próximo passo: CI/CD com GitHub Actions.
 
 ---
 
@@ -64,6 +64,7 @@ OpenWeather API
 | **MinIO** | `minio/minio:latest` | `9000` / `9001` | Object storage S3-compatível (Bronze e Silver) |
 | **PostgreSQL** | `postgres:15-alpine` | `5432` | Banco de dados principal (Gold / Histórico + metadata Airflow) |
 | **pgAdmin** | `dpage/pgadmin4` | `5050` | Interface web para o PostgreSQL |
+| **Metabase** | `metabase/metabase:latest` | `3000` | Ferramenta de BI para dashboards usando a camada Gold |
 | **Airflow Webserver** | `infra-airflow` (custom) | `8080` | UI de monitoramento e controle das DAGs |
 | **Airflow Scheduler** | `infra-airflow` (custom) | — | Motor de agendamento e execução (LocalExecutor) |
 | **Airflow Init** | `infra-airflow` (custom) | — | Serviço efêmero: migra o banco e cria o usuário admin |
@@ -211,6 +212,7 @@ uv run python -m src.alertas    # Verificação de alertas → Telegram
 
 | Serviço | URL | Credenciais |
 |---------|-----|-------------|
+| **Metabase** | [http://localhost:3000](http://localhost:3000) | Usuário criado no primeiro acesso |
 | **Airflow UI** | [http://localhost:8080](http://localhost:8080) | `admin` / `admin` |
 | **MinIO Console** | [http://localhost:9001](http://localhost:9001) | `minioadmin` / `minioadmin123` |
 | **pgAdmin** | [http://localhost:5050](http://localhost:5050) | `admin@admin.com` / `admin` |
@@ -237,7 +239,7 @@ weather-api/
 ├── dags/
 │   └── dag_coleta_salvador.py          # DAG do Airflow — 5 tasks, @hourly, PythonOperator
 ├── infra/
-│   ├── docker-compose.yml              # Stack completa: MinIO + Postgres + pgAdmin + Airflow
+│   ├── docker-compose.yml              # Stack completa: MinIO + Postgres + pgAdmin + Airflow + Metabase
 │   ├── airflow/
 │   │   └── Dockerfile                  # Imagem customizada Airflow 2.10.5 + libs do projeto
 │   └── postgres/
@@ -310,4 +312,5 @@ docker compose -f infra/docker-compose.yml down -v
 - [x] Fase 3 — Carga idempotente no PostgreSQL + views analíticas (Gold)
 - [x] Fase 4 — Alertas automáticos via Telegram com retry (Tenacity)
 - [x] Fase 6 — Orquestração do pipeline com Apache Airflow (coleta horária automatizada)
-- [ ] Fase 5 — Dashboard analítico no Metabase
+- [x] Fase 5 — Dashboard analítico no Metabase
+- [ ] Fase 7 — CI/CD com GitHub Actions (testes automatizados e deploy)

@@ -185,6 +185,24 @@ services:
       postgres:
         condition: service_healthy
 
+  # ─────────────────────────────────────────
+  # SERVIÇO: metabase
+  # ─────────────────────────────────────────
+  metabase:
+    image: metabase/metabase:latest
+    container_name: weather_metabase
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Diz para o Metabase considerar o timezone local do projeto
+      - JAVA_TIMEZONE=America/Bahia
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - weather_network
+
 # =============================================================
 # VOLUMES
 # =============================================================
@@ -204,3 +222,4 @@ networks:
     # Todos os serviços se comunicam pelo nome do serviço como hostname.
     # Ex: Airflow → Postgres via "postgres:5432" 
     #     Airflow → MinIO via "minio:9000"
+
