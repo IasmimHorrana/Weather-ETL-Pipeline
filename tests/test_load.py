@@ -1,10 +1,9 @@
-import io
 import json
-import pytest
-import pandas as pd
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from src.load import load_silver_to_postgres, COLUNAS_EXCLUIR
+import pytest
+
+from src.load import COLUNAS_EXCLUIR, load_silver_to_postgres
 
 
 @pytest.fixture

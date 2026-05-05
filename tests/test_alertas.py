@@ -23,13 +23,13 @@ O que é testado:
     ✅ Falha no envio Telegram → pipeline não quebra (retorno = 0)
 """
 
-import pandas as pd
-import pytest
 from unittest.mock import patch
 
-# Importa as funções públicas do módulo que será testado
-from src.alertas import verificar_e_disparar_alertas, _formatar_mensagem
+import pandas as pd
+import pytest
 
+# Importa as funções públicas do módulo que será testado
+from src.alertas import _formatar_mensagem, verificar_e_disparar_alertas
 
 # ─────────────────────────────────────────────
 # FIXTURES: Dados reutilizáveis entre os testes

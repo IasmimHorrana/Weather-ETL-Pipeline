@@ -7,7 +7,7 @@ import os
 import typing
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import boto3
 from botocore.client import Config

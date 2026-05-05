@@ -1,12 +1,11 @@
+import io
 import logging
 import os
-import io
 import typing
 from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-
 
 # =============================================================
 # Configuração padrão compartilhada pelas tasks
@@ -121,6 +120,7 @@ def task_alertas(**context: typing.Any) -> None:
     verificar_e_disparar_alertas(). Loga se não houver condições críticas.
     """
     import pandas as pd
+
     from src.alertas import verificar_e_disparar_alertas
     from src.storage import download_from_silver
 

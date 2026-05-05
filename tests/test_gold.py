@@ -1,8 +1,6 @@
-import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import MagicMock, patch
 
-from src.gold import apply_gold_views, GOLD_SQL_DIR
+from src.gold import GOLD_SQL_DIR, apply_gold_views
 
 DB_URL = "postgresql://weather_user:weather_pass@localhost:5432/weather_db"
 

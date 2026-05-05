@@ -5,9 +5,9 @@ import os
 from pathlib import Path
 
 import pandas as pd
-from sqlalchemy import create_engine, MetaData, Table
-from sqlalchemy.engine import Engine
+from sqlalchemy import MetaData, Table, create_engine
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.engine import Engine
 
 from src.storage import download_from_silver
 

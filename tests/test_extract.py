@@ -1,8 +1,9 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
 import requests as req_lib
-from unittest.mock import patch, MagicMock
 
-from src.extract import extract_weather_data, _save_local_fallback
+from src.extract import _save_local_fallback, extract_weather_data
 
 
 @pytest.fixture
@@ -233,7 +234,6 @@ class TestSaveLocalFallback:
         CENÁRIO: Desenvolvedor quer salvar fallback local.
         ESPERADO: Arquivo JSON é criado no caminho especificado.
         """
-        from src.extract import _save_local_fallback
 
         destino = tmp_path / "weather_data.json"
 
@@ -247,7 +247,6 @@ class TestSaveLocalFallback:
         ESPERADO: Conteúdo do arquivo é JSON válido com os dados corretos.
         """
         import json
-        from src.extract import _save_local_fallback
 
         destino = tmp_path / "weather_data.json"
         _save_local_fallback(payload_valido, destino)
@@ -260,7 +259,6 @@ class TestSaveLocalFallback:
         CENÁRIO: Diretório pai do arquivo não existe.
         ESPERADO: Função cria os diretórios necessários antes de salvar.
         """
-        from src.extract import _save_local_fallback
 
         destino = tmp_path / "subdir" / "novo" / "weather_data.json"
         _save_local_fallback(payload_valido, destino)

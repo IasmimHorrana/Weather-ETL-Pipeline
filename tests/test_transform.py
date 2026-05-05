@@ -1,18 +1,19 @@
 import json
-import pytest
+from unittest.mock import patch
+
 import pandas as pd
-from unittest.mock import patch, MagicMock
+import pytest
 
 from src.transform import (
-    load_raw_json,
-    load_from_bronze,
-    flatten_to_dataframe,
-    convert_timestamps_to_local,
-    validate_rain_schema,
-    standardize_to_silver,
     calculate_risk_level,
-    save_silver_data,
+    convert_timestamps_to_local,
+    flatten_to_dataframe,
+    load_from_bronze,
+    load_raw_json,
     run_pipeline,
+    save_silver_data,
+    standardize_to_silver,
+    validate_rain_schema,
 )
 
 
@@ -249,7 +250,6 @@ class TestValidateRainSchema:
         CENÁRIO: Coluna 'rain.1h' existe mas tem NaN (dado incompleto da API).
         ESPERADO: NaN é substituído por 0.0.
         """
-        import numpy as np
 
         df_com_nan = df_achatado.copy()
         df_com_nan["rain.1h"] = float("nan")

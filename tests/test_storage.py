@@ -1,16 +1,17 @@
 import json
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from botocore.exceptions import ClientError
 
 from src.storage import (
     _build_bronze_key,
-    upload_to_bronze,
     download_from_bronze,
-    upload_to_silver,
     download_from_silver,
     list_bronze_files,
     list_silver_files,
+    upload_to_bronze,
+    upload_to_silver,
 )
 
 
