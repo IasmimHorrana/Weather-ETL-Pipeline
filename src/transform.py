@@ -17,11 +17,12 @@ DEFAULT_DATA_PATH = Path(__file__).parent.parent / "data" / "weather_data.json"
 
 
 REGRAS_RISCO = {
-    "chuva_critica_mm": 50.0,
-    "vento_critico_ms": 15.0,
-    "chuva_alerta_mm": 25.0,
-    "chuva_atencao_mm": 5.0,
-    "umidade_atencao_pct": 80.0,
+    "chuva_critica_mm": 50.0,    # Alerta Vermelho INMET
+    "vento_critico_ms": 20.0,    # Alerta Vermelho INMET (>72 km/h)
+    "chuva_alerta_mm": 30.0,     # Alerta Laranja INMET
+    "vento_alerta_ms": 15.0,     # Vento forte para composição
+    "chuva_atencao_mm": 10.0,    # Chuva Moderada INMET
+    "umidade_atencao_pct": 90.0, # Umidade extrema
 }
 
 
@@ -215,9 +216,16 @@ def calculate_risk_level(df: pd.DataFrame) -> pd.DataFrame:
     umidade = df["umidade_pct"]
 
     condicoes = [
-        (chuva >= REGRAS_RISCO["chuva_critica_mm"]) | (vento >= REGRAS_RISCO["vento_critico_ms"]),  # CRÍTICO
-        (chuva >= REGRAS_RISCO["chuva_alerta_mm"]),  # ALERTA
-        (chuva >= REGRAS_RISCO["chuva_atencao_mm"]) & (umidade >= REGRAS_RISCO["umidade_atencao_pct"]),  # ATENÇÃO
+        # CRÍTICO: chuva extrema OU vento extremo OU (chuva forte + vento forte juntos)
+        (chuva >= REGRAS_RISCO["chuva_critica_mm"]) | 
+        (vento >= REGRAS_RISCO["vento_critico_ms"]) | 
+        ((chuva >= REGRAS_RISCO["chuva_alerta_mm"]) & (vento >= REGRAS_RISCO["vento_alerta_ms"])),
+        
+        # ALERTA: chuva forte
+        (chuva >= REGRAS_RISCO["chuva_alerta_mm"]),
+        
+        # ATENÇÃO: chuva moderada com altíssima umidade
+        (chuva >= REGRAS_RISCO["chuva_atencao_mm"]) & (umidade >= REGRAS_RISCO["umidade_atencao_pct"]),
     ]
     valores = ["CRÍTICO", "ALERTA", "ATENÇÃO"]
 

@@ -14,7 +14,7 @@ Monitorar condições climáticas de Salvador com foco em:
 - Armazenamento bruto imutável (Bronze / Landing Zone no MinIO)
 - Transformação, normalização e regras de negócio (Silver)
 - Persistência histórica e views analíticas no PostgreSQL (Gold)
-- Identificação de padrões e geração de alertas (chuva intensa, ventos fortes, umidade crítica)
+- Identificação de padrões climáticos e classificação de risco (Matriz de Alertas baseada em parâmetros oficiais do INMET)
 - Treinamento prático de infra com Docker, pipelines ETL em camadas (Medallion) e qualidade de código
 
 ---
@@ -36,7 +36,7 @@ OpenWeather API
       ├──► MinIO (Bronze)    ← JSON bruto / imutável
       │    └── weather_data/YYYY-MM-DD/HH-MM-SS_salvador.json
       │
-      ├──► transform.py      ← Limpeza, tipagem e regras de negócio → MinIO (Silver)
+      ├──► transform.py      ← Limpeza, tipagem e matriz de risco (INMET) → MinIO (Silver)
       │
       ├──► load.py           ← PostgreSQL (tb_weather_history) — idempotente
       │
