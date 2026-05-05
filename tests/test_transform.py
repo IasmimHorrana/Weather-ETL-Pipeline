@@ -344,21 +344,27 @@ class TestCalculateRiskLevel:
         resultado = calculate_risk_level(df)
         assert resultado["nivel_risco"].iloc[0] == "CRÍTICO"
 
-    def test_vento_acima_15ms_e_critico(self):
-        """LIMIAR: vento >= 15 m/s → CRÍTICO (independente da chuva)."""
-        df = self._criar_df_risco(chuva=0.0, vento=16.0, umidade=50)
+    def test_vento_acima_20ms_e_critico(self):
+        """LIMIAR: vento >= 20 m/s → CRÍTICO (independente da chuva)."""
+        df = self._criar_df_risco(chuva=0.0, vento=21.0, umidade=50)
         resultado = calculate_risk_level(df)
         assert resultado["nivel_risco"].iloc[0] == "CRÍTICO"
 
-    def test_chuva_acima_25mm_e_alerta(self):
-        """LIMIAR: chuva >= 25mm (mas < 50mm) → ALERTA."""
-        df = self._criar_df_risco(chuva=30.0, vento=5.0, umidade=70)
+    def test_chuva_forte_e_vento_forte_e_critico(self):
+        """LIMIAR: chuva >= 30mm E vento >= 15m/s combinados → CRÍTICO."""
+        df = self._criar_df_risco(chuva=31.0, vento=16.0, umidade=80)
+        resultado = calculate_risk_level(df)
+        assert resultado["nivel_risco"].iloc[0] == "CRÍTICO"
+
+    def test_chuva_acima_30mm_e_alerta(self):
+        """LIMIAR: chuva >= 30mm (mas < 50mm e vento fraco) → ALERTA."""
+        df = self._criar_df_risco(chuva=35.0, vento=5.0, umidade=70)
         resultado = calculate_risk_level(df)
         assert resultado["nivel_risco"].iloc[0] == "ALERTA"
 
-    def test_chuva_5mm_e_umidade_80pct_e_atencao(self):
-        """LIMIAR: chuva >= 5mm E umidade >= 80% → ATENÇÃO (solo saturando)."""
-        df = self._criar_df_risco(chuva=6.0, vento=3.0, umidade=85)
+    def test_chuva_10mm_e_umidade_90pct_e_atencao(self):
+        """LIMIAR: chuva >= 10mm E umidade >= 90% → ATENÇÃO (solo saturando)."""
+        df = self._criar_df_risco(chuva=11.0, vento=3.0, umidade=95)
         resultado = calculate_risk_level(df)
         assert resultado["nivel_risco"].iloc[0] == "ATENÇÃO"
 
