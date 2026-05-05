@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 from sqlalchemy import create_engine, MetaData, Table
+from sqlalchemy.engine import Engine
 from sqlalchemy.dialects.postgresql import insert
 
 from src.storage import download_from_silver
@@ -15,7 +16,7 @@ logging.basicConfig(
 )
 
 @functools.lru_cache(maxsize=1)
-def _get_engine(db_url: str):
+def _get_engine(db_url: str) -> Engine:
     """Cria e cacheia o engine SQLAlchemy. Singleton por URL."""
     return create_engine(db_url)
 
@@ -77,7 +78,7 @@ def load_silver_to_postgres(
         with engine.begin() as conn:
             resultado = conn.execute(stmt)
 
-        inseridas = resultado.rowcount
+        inseridas = int(resultado.rowcount)
         ignoradas = len(df) - inseridas
 
         if ignoradas:

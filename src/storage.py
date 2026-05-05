@@ -4,9 +4,10 @@ import functools
 import json
 import logging
 import os
+import typing
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import boto3
 from botocore.client import Config
@@ -30,7 +31,7 @@ SILVER_BUCKET: str = os.getenv("MINIO_SILVER_BUCKET", "silver")
 
 
 @functools.lru_cache(maxsize=1)
-def _get_s3_client():
+def _get_s3_client() -> typing.Any:
     """Retorna um cliente boto3 configurado para o MinIO (s3v4). Singleton via cache."""
     variaveis_obrigatorias = {
         "MINIO_ENDPOINT": MINIO_ENDPOINT,
@@ -56,7 +57,7 @@ def _get_s3_client():
     )
 
 
-def _ensure_bucket_exists(client, bucket_name: str) -> None:
+def _ensure_bucket_exists(client: typing.Any, bucket_name: str) -> None:
     """Cria o bucket se não existir. Propaga outros erros."""
     try:
         client.head_bucket(Bucket=bucket_name)
@@ -175,7 +176,7 @@ def download_from_silver(object_key: str) -> str:
         response = client.get_object(Bucket=SILVER_BUCKET, Key=object_key)
         raw_bytes = response["Body"].read()
         logger.info(f"[Silver] Arquivo carregado: s3://{SILVER_BUCKET}/{object_key}")
-        return raw_bytes.decode("utf-8")
+        return str(raw_bytes.decode("utf-8"))
 
     except ClientError as e:
         logger.error(f"[Silver] Falha ao baixar do MinIO: {e}")

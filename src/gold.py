@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -14,7 +15,7 @@ GOLD_SQL_DIR = Path(__file__).parent.parent / "infra" / "postgres" / "gold"
 
 
 @functools.lru_cache(maxsize=1)
-def _get_engine(db_url: str):
+def _get_engine(db_url: str) -> Engine:
     """Cria e cacheia o engine SQLAlchemy. Singleton por URL."""
     return create_engine(db_url)
 

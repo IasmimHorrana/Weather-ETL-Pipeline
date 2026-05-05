@@ -1,6 +1,7 @@
 import logging
 import os
 import io
+import typing
 from datetime import datetime, timedelta
 
 from airflow import DAG
@@ -35,7 +36,7 @@ DATABASE_URL = os.getenv(
 # =============================================================
 # TASK 1 — Extração: OpenWeather API → MinIO (Bronze)
 # =============================================================
-def task_extract(**context) -> None:
+def task_extract(**context: typing.Any) -> None:
     """
     Chama extract_weather_data() e empurra o bronze_key via XCom
     para que a task seguinte saiba qual arquivo processar.
@@ -54,7 +55,7 @@ def task_extract(**context) -> None:
 # =============================================================
 # TASK 2 — Transformação: MinIO Bronze → MinIO Silver
 # =============================================================
-def task_transform(**context) -> None:
+def task_transform(**context: typing.Any) -> None:
     """
     Lê o bronze_key do XCom, chama run_pipeline() e empurra o silver_key.
     run_pipeline() já cuida de normalizar, calcular risco e salvar na Silver.
@@ -80,7 +81,7 @@ def task_transform(**context) -> None:
 # =============================================================
 # TASK 3 — Carga histórica: MinIO Silver → PostgreSQL
 # =============================================================
-def task_load(**context) -> None:
+def task_load(**context: typing.Any) -> None:
     """
     Lê o silver_key do XCom e faz a inserção idempotente no PostgreSQL.
     """
@@ -100,7 +101,7 @@ def task_load(**context) -> None:
 # =============================================================
 # TASK 4 — Views Gold: Aplica/atualiza views analíticas
 # =============================================================
-def task_gold_views(**context) -> None:
+def task_gold_views(**context: typing.Any) -> None:
     """
     Aplica (ou recria) todas as views analíticas de infra/postgres/gold/.
     O gold.py lê os .sql e executa CREATE OR REPLACE VIEW no PostgreSQL.
@@ -114,7 +115,7 @@ def task_gold_views(**context) -> None:
 # =============================================================
 # TASK 5 — Alertas: verifica risco e dispara Telegram
 # =============================================================
-def task_alertas(**context) -> None:
+def task_alertas(**context: typing.Any) -> None:
     """
     Baixa o Silver mais recente do MinIO, monta o DataFrame e chama
     verificar_e_disparar_alertas(). Loga se não houver condições críticas.

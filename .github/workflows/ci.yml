@@ -1,0 +1,48 @@
+name: Data Pipeline CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  quality-and-tests:
+    name: Code Quality & Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv (Astral)
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install Dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Check Formatting (Ruff)
+        run: uv run ruff format --check src/ tests/ dags/
+
+      - name: Lint Code (Ruff)
+        run: uv run ruff check src/ tests/ dags/
+
+      - name: Static Type Check (MyPy)
+        run: uv run mypy src/ dags/
+
+      - name: Run Unit Tests (Pytest)
+        run: |
+          # Cria um .env falso a partir do example para os testes passarem na nuvem
+          cp config/.env.example config/.env
+          uv run pytest -v --cov=src --cov-report=term-missing --cov-fail-under=70
+
+      - name: Security Check (pip-audit)
+        run: uv run pip-audit
