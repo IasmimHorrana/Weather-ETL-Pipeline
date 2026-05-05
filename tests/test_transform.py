@@ -15,6 +15,7 @@ from src.transform import (
     run_pipeline,
 )
 
+
 @pytest.fixture
 def raw_json_completo() -> dict:
     """
@@ -23,12 +24,17 @@ def raw_json_completo() -> dict:
     """
     return {
         "coord": {"lon": -38.5014, "lat": -12.9716},
-        "weather": [{"id": 500, "main": "Rain", "description": "chuva leve", "icon": "10d"}],
+        "weather": [
+            {"id": 500, "main": "Rain", "description": "chuva leve", "icon": "10d"}
+        ],
         "base": "stations",
         "main": {
-            "temp": 26.48, "feels_like": 27.2,
-            "temp_min": 25.0, "temp_max": 28.0,
-            "pressure": 1012, "humidity": 85,
+            "temp": 26.48,
+            "feels_like": 27.2,
+            "temp_min": 25.0,
+            "temp_max": 28.0,
+            "pressure": 1012,
+            "humidity": 85,
         },
         "visibility": 6424,
         "wind": {"speed": 6.82, "deg": 161, "gust": 7.54},
@@ -76,8 +82,8 @@ def df_silver(df_achatado) -> pd.DataFrame:
 # 1. TESTES: load_raw_json
 # ─────────────────────────────────────────────
 
-class TestLoadRawJson:
 
+class TestLoadRawJson:
     def test_carrega_json_existente_com_sucesso(self, tmp_path, raw_json_completo):
         """
         CENÁRIO: Arquivo JSON existe e tem conteúdo válido.
@@ -122,8 +128,8 @@ class TestLoadRawJson:
 # 2. TESTES: flatten_to_dataframe
 # ─────────────────────────────────────────────
 
-class TestFlattenToDataframe:
 
+class TestFlattenToDataframe:
     def test_retorna_dataframe(self, raw_json_completo):
         """
         CENÁRIO: JSON válido recebido.
@@ -176,8 +182,8 @@ class TestFlattenToDataframe:
 # 3. TESTES: convert_timestamps_to_local
 # ─────────────────────────────────────────────
 
-class TestConvertTimestampsToLocal:
 
+class TestConvertTimestampsToLocal:
     def test_coluna_dt_vira_datetime(self, df_achatado):
         """
         CENÁRIO: DataFrame com colunas de Unix Timestamp (inteiros).
@@ -212,7 +218,9 @@ class TestConvertTimestampsToLocal:
         CENÁRIO: DataFrame sem as colunas de timestamp (schema incompleto).
         ESPERADO: Função não quebra — programação defensiva.
         """
-        df_sem_timestamps = pd.DataFrame([{"cidade": "Salvador", "temperatura_c": 26.0}])
+        df_sem_timestamps = pd.DataFrame(
+            [{"cidade": "Salvador", "temperatura_c": 26.0}]
+        )
         resultado = convert_timestamps_to_local(df_sem_timestamps)
         assert isinstance(resultado, pd.DataFrame)
 
@@ -221,8 +229,8 @@ class TestConvertTimestampsToLocal:
 # 4. TESTES: validate_rain_schema
 # ─────────────────────────────────────────────
 
-class TestValidateRainSchema:
 
+class TestValidateRainSchema:
     def test_cria_coluna_zerada_quando_ausente(self, df_achatado):
         """
         CENÁRIO: DataFrame sem coluna 'rain.1h' (não choveu).
@@ -242,6 +250,7 @@ class TestValidateRainSchema:
         ESPERADO: NaN é substituído por 0.0.
         """
         import numpy as np
+
         df_com_nan = df_achatado.copy()
         df_com_nan["rain.1h"] = float("nan")
 
@@ -263,8 +272,8 @@ class TestValidateRainSchema:
 # 5. TESTES: standardize_to_silver
 # ─────────────────────────────────────────────
 
-class TestStandardizeToSilver:
 
+class TestStandardizeToSilver:
     def test_coluna_name_renomeada_para_cidade(self, df_achatado):
         """
         CENÁRIO: DataFrame com coluna 'name' (padrão da API inglesa).
@@ -296,7 +305,9 @@ class TestStandardizeToSilver:
 
         colunas_proibidas = ["base", "cod"]
         for col in colunas_proibidas:
-            assert col not in resultado.columns, f"Coluna '{col}' deveria ter sido removida"
+            assert col not in resultado.columns, (
+                f"Coluna '{col}' deveria ter sido removida"
+            )
 
     def test_mapeamento_completo_de_colunas_essenciais(self, df_achatado):
         """
@@ -306,20 +317,29 @@ class TestStandardizeToSilver:
         se qualquer coluna sumir, o dashboard quebra silenciosamente.
         """
         colunas_obrigatorias = [
-            "cidade", "pais", "latitude", "longitude",
-            "temperatura_c", "umidade_pct", "chuva_1h_mm",
-            "vento_velocidade_ms", "condicao_clima",
+            "cidade",
+            "pais",
+            "latitude",
+            "longitude",
+            "temperatura_c",
+            "umidade_pct",
+            "chuva_1h_mm",
+            "vento_velocidade_ms",
+            "condicao_clima",
         ]
         df = validate_rain_schema(df_achatado)
         resultado = standardize_to_silver(df)
 
         for col in colunas_obrigatorias:
-            assert col in resultado.columns, f"Coluna obrigatória '{col}' ausente na Camada Silver"
+            assert col in resultado.columns, (
+                f"Coluna obrigatória '{col}' ausente na Camada Silver"
+            )
 
 
 # ─────────────────────────────────────────────
 # 6. TESTES: calculate_risk_level
 # ─────────────────────────────────────────────
+
 
 class TestCalculateRiskLevel:
     """
@@ -330,13 +350,17 @@ class TestCalculateRiskLevel:
 
     def _criar_df_risco(self, chuva: float, vento: float, umidade: int) -> pd.DataFrame:
         """Helper privado: cria um DataFrame mínimo para testar os limiares."""
-        return pd.DataFrame([{
-            "cidade": "Salvador",
-            "chuva_1h_mm": chuva,
-            "vento_velocidade_ms": vento,
-            "umidade_pct": umidade,
-            "temperatura_c": 28.0,
-        }])
+        return pd.DataFrame(
+            [
+                {
+                    "cidade": "Salvador",
+                    "chuva_1h_mm": chuva,
+                    "vento_velocidade_ms": vento,
+                    "umidade_pct": umidade,
+                    "temperatura_c": 28.0,
+                }
+            ]
+        )
 
     def test_chuva_acima_50mm_e_critico(self):
         """LIMIAR: chuva >= 50mm → CRÍTICO (risco de deslizamento)."""
@@ -407,6 +431,7 @@ class TestCalculateRiskLevel:
 # 7. TESTES: load_from_bronze
 # ─────────────────────────────────────────────
 
+
 class TestLoadFromBronze:
     """Testa a leitura do JSON bruto direto do MinIO (modo produção)."""
 
@@ -415,8 +440,12 @@ class TestLoadFromBronze:
         CENÁRIO: object_key válida e MinIO retorna o JSON correto.
         ESPERADO: Retorna o dicionário com os dados da API.
         """
-        with patch("src.transform.download_from_bronze", return_value=raw_json_completo):
-            resultado = load_from_bronze("weather_data/2026-04-30/10-00-00_salvador.json")
+        with patch(
+            "src.transform.download_from_bronze", return_value=raw_json_completo
+        ):
+            resultado = load_from_bronze(
+                "weather_data/2026-04-30/10-00-00_salvador.json"
+            )
 
         assert isinstance(resultado, dict)
         assert resultado.get("name") == "Salvador"
@@ -435,6 +464,7 @@ class TestLoadFromBronze:
 # ─────────────────────────────────────────────
 # 8. TESTES: save_silver_data
 # ─────────────────────────────────────────────
+
 
 class TestSaveSilverData:
     """Testa a exportação dos dados Silver para disco e MinIO."""
@@ -457,6 +487,7 @@ class TestSaveSilverData:
         ESPERADO: Conteúdo do arquivo é JSON legível.
         """
         import json
+
         destino = tmp_path / "weather_silver.json"
 
         with patch("src.transform.upload_to_silver", return_value=None):
@@ -466,7 +497,9 @@ class TestSaveSilverData:
         assert isinstance(conteudo, list)
         assert len(conteudo) == 1
 
-    def test_upload_minio_chamado_quando_bronze_key_fornecida(self, tmp_path, df_silver):
+    def test_upload_minio_chamado_quando_bronze_key_fornecida(
+        self, tmp_path, df_silver
+    ):
         """
         CENÁRIO: bronze_key é fornecida (modo produção).
         ESPERADO: upload_to_silver é chamado 1 vez com a silver_key derivada.
@@ -477,7 +510,9 @@ class TestSaveSilverData:
         destino = tmp_path / "weather_silver.json"
         bronze_key = "weather_data/2026-04-30/10-00-00_salvador.json"
 
-        with patch("src.transform.upload_to_silver", return_value="chave") as mock_silver:
+        with patch(
+            "src.transform.upload_to_silver", return_value="chave"
+        ) as mock_silver:
             save_silver_data(df_silver, destino, bronze_key=bronze_key)
 
         mock_silver.assert_called_once()
@@ -501,6 +536,7 @@ class TestSaveSilverData:
 # 9. TESTES: run_pipeline (Orquestrador)
 # ─────────────────────────────────────────────
 
+
 class TestRunPipeline:
     """Testa o orquestrador que encadeia todas as transformações."""
 
@@ -510,6 +546,7 @@ class TestRunPipeline:
         ESPERADO: run_pipeline retorna DataFrame com 'nivel_risco'.
         """
         import json
+
         arquivo_entrada = tmp_path / "weather_data.json"
         arquivo_saida = tmp_path / "weather_silver.json"
         arquivo_entrada.write_text(json.dumps(raw_json_completo), encoding="utf-8")
@@ -530,6 +567,7 @@ class TestRunPipeline:
         ESPERADO: Arquivo Silver é criado em output_path.
         """
         import json
+
         arquivo_entrada = tmp_path / "weather_data.json"
         arquivo_saida = tmp_path / "weather_silver.json"
         arquivo_entrada.write_text(json.dumps(raw_json_completo), encoding="utf-8")
@@ -547,7 +585,9 @@ class TestRunPipeline:
         arquivo_saida = tmp_path / "weather_silver.json"
         bronze_key = "weather_data/2026-04-30/10-00-00_salvador.json"
 
-        with patch("src.transform.download_from_bronze", return_value=raw_json_completo):
+        with patch(
+            "src.transform.download_from_bronze", return_value=raw_json_completo
+        ):
             with patch("src.transform.upload_to_silver", return_value=None):
                 resultado = run_pipeline(
                     output_path=arquivo_saida,

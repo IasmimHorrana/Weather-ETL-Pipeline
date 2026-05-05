@@ -4,6 +4,7 @@ from unittest.mock import patch, MagicMock
 
 from src.extract import extract_weather_data, _save_local_fallback
 
+
 @pytest.fixture
 def payload_valido() -> dict:
     """
@@ -15,11 +16,16 @@ def payload_valido() -> dict:
         "name": "Salvador",
         "cod": 200,
         "coord": {"lon": -38.5, "lat": -12.97},
-        "weather": [{"id": 500, "main": "Rain", "description": "chuva leve", "icon": "10d"}],
+        "weather": [
+            {"id": 500, "main": "Rain", "description": "chuva leve", "icon": "10d"}
+        ],
         "main": {
-            "temp": 26.48, "feels_like": 27.2,
-            "temp_min": 25.0, "temp_max": 28.0,
-            "pressure": 1012, "humidity": 85,
+            "temp": 26.48,
+            "feels_like": 27.2,
+            "temp_min": 25.0,
+            "temp_max": 28.0,
+            "pressure": 1012,
+            "humidity": 85,
         },
         "wind": {"speed": 6.82, "deg": 161, "gust": 7.54},
         "clouds": {"all": 57},
@@ -63,8 +69,9 @@ def _make_error_response(status_code: int, text: str = "error"):
 
 
 class TestExtractWeatherData:
-
-    def test_sucesso_retorna_dados_e_object_key(self, mock_response_sucesso, payload_valido):
+    def test_sucesso_retorna_dados_e_object_key(
+        self, mock_response_sucesso, payload_valido
+    ):
         """
         CENÁRIO: API responde 200 OK e upload ao MinIO funciona.
         ESPERADO: Retorna (dict_com_dados, "alguma/chave.json").
@@ -74,7 +81,9 @@ class TestExtractWeatherData:
         bronze_key = "weather_data/2026-04-30/10-00-00_salvador.json"
 
         with patch("src.extract.requests.get", return_value=mock_response_sucesso):
-            with patch("src.extract.upload_to_bronze", return_value=bronze_key) as mock_upload:
+            with patch(
+                "src.extract.upload_to_bronze", return_value=bronze_key
+            ) as mock_upload:
                 dados, key = extract_weather_data("http://url-falsa.com")
 
         assert isinstance(dados, dict)
@@ -82,7 +91,9 @@ class TestExtractWeatherData:
         assert key == bronze_key
         mock_upload.assert_called_once()
 
-    def test_sucesso_chama_upload_to_bronze_com_dados_corretos(self, mock_response_sucesso, payload_valido):
+    def test_sucesso_chama_upload_to_bronze_com_dados_corretos(
+        self, mock_response_sucesso, payload_valido
+    ):
         """
         CENÁRIO: Extração bem-sucedida.
         ESPERADO: upload_to_bronze é chamado com o dicionário retornado pela API
@@ -92,11 +103,15 @@ class TestExtractWeatherData:
         os dados brutos chegam intactos ao MinIO.
         """
         with patch("src.extract.requests.get", return_value=mock_response_sucesso):
-            with patch("src.extract.upload_to_bronze", return_value="chave.json") as mock_upload:
+            with patch(
+                "src.extract.upload_to_bronze", return_value="chave.json"
+            ) as mock_upload:
                 extract_weather_data("http://url-falsa.com")
 
         call_kwargs = mock_upload.call_args
-        dados_enviados = call_kwargs[0][0] if call_kwargs[0] else call_kwargs[1].get("data")
+        dados_enviados = (
+            call_kwargs[0][0] if call_kwargs[0] else call_kwargs[1].get("data")
+        )
         assert dados_enviados.get("name") == "Salvador"
 
     def test_minio_indisponivel_retorna_dados_e_none(self, mock_response_sucesso):
@@ -121,8 +136,10 @@ class TestExtractWeatherData:
         CENÁRIO: Internet cai durante a requisição (ConnectionError).
         ESPERADO: Retorna ({}, None) SEM lançar exceção (pipeline não quebra).
         """
-        with patch("src.extract.requests.get",
-                   side_effect=req_lib.exceptions.ConnectionError("Connection refused")):
+        with patch(
+            "src.extract.requests.get",
+            side_effect=req_lib.exceptions.ConnectionError("Connection refused"),
+        ):
             dados, key = extract_weather_data("http://url-falsa.com")
 
         assert dados == {}
@@ -133,8 +150,10 @@ class TestExtractWeatherData:
         CENÁRIO: API demora mais de 10 segundos para responder (Timeout).
         ESPERADO: Retorna ({}, None) sem travar o pipeline indefinidamente.
         """
-        with patch("src.extract.requests.get",
-                   side_effect=req_lib.exceptions.Timeout("Timeout!")):
+        with patch(
+            "src.extract.requests.get",
+            side_effect=req_lib.exceptions.Timeout("Timeout!"),
+        ):
             dados, key = extract_weather_data("http://url-falsa.com")
 
         assert dados == {}
@@ -209,13 +228,13 @@ class TestExtractWeatherData:
 
 
 class TestSaveLocalFallback:
-
     def test_salva_arquivo_em_disco(self, tmp_path, payload_valido):
         """
         CENÁRIO: Desenvolvedor quer salvar fallback local.
         ESPERADO: Arquivo JSON é criado no caminho especificado.
         """
         from src.extract import _save_local_fallback
+
         destino = tmp_path / "weather_data.json"
 
         _save_local_fallback(payload_valido, destino)

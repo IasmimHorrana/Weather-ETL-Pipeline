@@ -8,7 +8,6 @@ DB_URL = "postgresql://weather_user:weather_pass@localhost:5432/weather_db"
 
 
 class TestApplyGoldViews:
-
     def test_aplica_todas_as_views_encontradas(self, tmp_path):
         """
         CENÁRIO: Diretório gold tem 2 arquivos .sql válidos.
@@ -44,7 +43,9 @@ class TestApplyGoldViews:
         ESPERADO: É pulado silenciosamente. A lista de retorno não inclui ele.
         """
         (tmp_path / "vw_vazia.sql").write_text("")
-        (tmp_path / "vw_valida.sql").write_text("CREATE OR REPLACE VIEW vw_valida AS SELECT 1;")
+        (tmp_path / "vw_valida.sql").write_text(
+            "CREATE OR REPLACE VIEW vw_valida AS SELECT 1;"
+        )
 
         mock_engine = MagicMock()
         mock_conn = MagicMock()

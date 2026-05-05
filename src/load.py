@@ -15,13 +15,14 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+
 @functools.lru_cache(maxsize=1)
 def _get_engine(db_url: str) -> Engine:
     """Cria e cacheia o engine SQLAlchemy. Singleton por URL."""
     return create_engine(db_url)
 
 
-# Colunas que o init.sql gerencia automaticamente 
+# Colunas que o init.sql gerencia automaticamente
 COLUNAS_EXCLUIR = ["id", "coletado_em", "timezone"]
 
 
@@ -52,7 +53,9 @@ def load_silver_to_postgres(
             return 0
         df = pd.read_json(path, orient="records")
     else:
-        raise ValueError("Forneça silver_key (produção) ou input_path (desenvolvimento).")
+        raise ValueError(
+            "Forneça silver_key (produção) ou input_path (desenvolvimento)."
+        )
 
     logging.info(f"Silver carregado: {len(df)} linha(s), {len(df.columns)} colunas.")
 
@@ -71,8 +74,10 @@ def load_silver_to_postgres(
         tabela = Table("tb_weather_history", meta)
 
         registros = df.to_dict(orient="records")
-        stmt = insert(tabela).values(registros).on_conflict_do_nothing(
-            index_elements=["cidade", "data_hora"]
+        stmt = (
+            insert(tabela)
+            .values(registros)
+            .on_conflict_do_nothing(index_elements=["cidade", "data_hora"])
         )
 
         with engine.begin() as conn:
@@ -82,7 +87,9 @@ def load_silver_to_postgres(
         ignoradas = len(df) - inseridas
 
         if ignoradas:
-            logging.info(f"[~] {ignoradas} linha(s) ignorada(s) por já existirem no banco.")
+            logging.info(
+                f"[~] {ignoradas} linha(s) ignorada(s) por já existirem no banco."
+            )
         logging.info(
             f"[✔] Carga finalizada! {inseridas} linha(s) adicionada(s) ao histórico."
         )
@@ -108,10 +115,16 @@ if __name__ == "__main__":
     silver_key_recente = arquivos_silver[-1] if arquivos_silver else None
 
     if silver_key_recente:
-        print(f"\n[Testando integração] Iniciando Carga a partir do MinIO: {silver_key_recente}")
-        linhas = load_silver_to_postgres(db_url=POSTGRES_URL, silver_key=silver_key_recente)
+        print(
+            f"\n[Testando integração] Iniciando Carga a partir do MinIO: {silver_key_recente}"
+        )
+        linhas = load_silver_to_postgres(
+            db_url=POSTGRES_URL, silver_key=silver_key_recente
+        )
     else:
-        print("\n[Modo Local] Nenhum arquivo Silver no MinIO. Rodando com fallback local.")
+        print(
+            "\n[Modo Local] Nenhum arquivo Silver no MinIO. Rodando com fallback local."
+        )
         arquivo_silver = Path(__file__).parent.parent / "data" / "weather_silver.json"
         linhas = load_silver_to_postgres(db_url=POSTGRES_URL, input_path=arquivo_silver)
 

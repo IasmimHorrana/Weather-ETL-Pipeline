@@ -6,6 +6,7 @@ from unittest.mock import patch, MagicMock
 
 from src.load import load_silver_to_postgres, COLUNAS_EXCLUIR
 
+
 @pytest.fixture
 def silver_json() -> str:
     """JSON Silver mínimo válido, no formato que o MinIO retornaria."""
@@ -59,8 +60,8 @@ DB_URL = "postgresql://user:pass@localhost:5432/weather_db"
 # TESTES
 # ─────────────────────────────────────────────
 
-class TestLoadSilverToPostgres:
 
+class TestLoadSilverToPostgres:
     def test_sucesso_via_minio_retorna_qtd_linhas(self, silver_json, mock_engine):
         """
         CENÁRIO: silver_key fornecida, MinIO e banco disponíveis.
@@ -86,7 +87,9 @@ class TestLoadSilverToPostgres:
 
         assert resultado == 1
 
-    def test_sucesso_via_arquivo_local_retorna_qtd_linhas(self, silver_json, tmp_path, mock_engine):
+    def test_sucesso_via_arquivo_local_retorna_qtd_linhas(
+        self, silver_json, tmp_path, mock_engine
+    ):
         """
         CENÁRIO: input_path fornecido (modo dev), sem MinIO.
         ESPERADO: Retorna 1 (1 linha inserida do arquivo local).
@@ -104,7 +107,9 @@ class TestLoadSilverToPostgres:
             with patch("src.load.MetaData", return_value=MagicMock()):
                 with patch("src.load.Table", return_value=MagicMock()):
                     with patch("src.load.insert", mock_insert):
-                        resultado = load_silver_to_postgres(db_url=DB_URL, input_path=arquivo)
+                        resultado = load_silver_to_postgres(
+                            db_url=DB_URL, input_path=arquivo
+                        )
 
         assert resultado == 1
 
@@ -137,7 +142,9 @@ class TestLoadSilverToPostgres:
         resultado = load_silver_to_postgres(db_url=DB_URL, input_path=caminho_falso)
         assert resultado == 0
 
-    def test_colunas_gerenciadas_pelo_banco_sao_removidas(self, silver_json, mock_engine):
+    def test_colunas_gerenciadas_pelo_banco_sao_removidas(
+        self, silver_json, mock_engine
+    ):
         """
         CENÁRIO: JSON Silver contém id, coletado_em, timezone.
         ESPERADO: O dict enviado ao insert não contém essas colunas.

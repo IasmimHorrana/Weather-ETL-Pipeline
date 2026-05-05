@@ -116,7 +116,7 @@ def upload_to_bronze(data: dict, city: str = "salvador") -> str | None:
 def upload_to_silver(data_json: str, object_key: str) -> str | None:
     """
     Persiste o JSON processado no bucket Silver.
-    
+
     Retorna o object_key ou None em caso de falha.
     """
     if not data_json:

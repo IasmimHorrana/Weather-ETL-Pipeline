@@ -146,13 +146,12 @@ def task_alertas(**context: typing.Any) -> None:
 with DAG(
     dag_id="coleta_salvador",
     description="ETL de dados climáticos: OpenWeather → MinIO → PostgreSQL → Alertas",
-    schedule_interval="@hourly",          # Coleta a cada hora
+    schedule_interval="@hourly",  # Coleta a cada hora
     start_date=datetime(2026, 5, 1),
-    catchup=False,                         # Não reprocessa datas passadas ao ligar
+    catchup=False,  # Não reprocessa datas passadas ao ligar
     default_args=DEFAULT_ARGS,
     tags=["weather", "etl", "salvador"],
 ) as dag:
-
     extract_bronze = PythonOperator(
         task_id="extract_bronze",
         python_callable=task_extract,
@@ -179,4 +178,10 @@ with DAG(
     )
 
     # Pipeline sequencial — cada task depende da anterior
-    extract_bronze >> transform_silver >> load_historico >> apply_gold >> dispara_alertas
+    (
+        extract_bronze
+        >> transform_silver
+        >> load_historico
+        >> apply_gold
+        >> dispara_alertas
+    )

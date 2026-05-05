@@ -17,16 +17,16 @@ DEFAULT_DATA_PATH = Path(__file__).parent.parent / "data" / "weather_data.json"
 
 
 REGRAS_RISCO = {
-    "chuva_critica_mm": 50.0,    # Alerta Vermelho INMET
-    "vento_critico_ms": 20.0,    # Alerta Vermelho INMET (>72 km/h)
-    "chuva_alerta_mm": 30.0,     # Alerta Laranja INMET
-    "vento_alerta_ms": 15.0,     # Vento forte para composição
-    "chuva_atencao_mm": 10.0,    # Chuva Moderada INMET
-    "umidade_atencao_pct": 90.0, # Umidade extrema
+    "chuva_critica_mm": 50.0,  # Alerta Vermelho INMET
+    "vento_critico_ms": 20.0,  # Alerta Vermelho INMET (>72 km/h)
+    "chuva_alerta_mm": 30.0,  # Alerta Laranja INMET
+    "vento_alerta_ms": 15.0,  # Vento forte para composição
+    "chuva_atencao_mm": 10.0,  # Chuva Moderada INMET
+    "umidade_atencao_pct": 90.0,  # Umidade extrema
 }
 
 
-# 1a. Função de Extração a partir do MinIO (Bronze) 
+# 1a. Função de Extração a partir do MinIO (Bronze)
 def load_from_bronze(object_key: str) -> dict:
     """
     Lê o JSON bruto diretamente do bucket Bronze no MinIO.
@@ -217,15 +217,17 @@ def calculate_risk_level(df: pd.DataFrame) -> pd.DataFrame:
 
     condicoes = [
         # CRÍTICO: chuva extrema OU vento extremo OU (chuva forte + vento forte juntos)
-        (chuva >= REGRAS_RISCO["chuva_critica_mm"]) | 
-        (vento >= REGRAS_RISCO["vento_critico_ms"]) | 
-        ((chuva >= REGRAS_RISCO["chuva_alerta_mm"]) & (vento >= REGRAS_RISCO["vento_alerta_ms"])),
-        
+        (chuva >= REGRAS_RISCO["chuva_critica_mm"])
+        | (vento >= REGRAS_RISCO["vento_critico_ms"])
+        | (
+            (chuva >= REGRAS_RISCO["chuva_alerta_mm"])
+            & (vento >= REGRAS_RISCO["vento_alerta_ms"])
+        ),
         # ALERTA: chuva forte
         (chuva >= REGRAS_RISCO["chuva_alerta_mm"]),
-        
         # ATENÇÃO: chuva moderada com altíssima umidade
-        (chuva >= REGRAS_RISCO["chuva_atencao_mm"]) & (umidade >= REGRAS_RISCO["umidade_atencao_pct"]),
+        (chuva >= REGRAS_RISCO["chuva_atencao_mm"])
+        & (umidade >= REGRAS_RISCO["umidade_atencao_pct"]),
     ]
     valores = ["CRÍTICO", "ALERTA", "ATENÇÃO"]
 
@@ -236,13 +238,15 @@ def calculate_risk_level(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # 7. Função de Exportação (Load / Camada Silver)
-def save_silver_data(df: pd.DataFrame, output_path: str | Path, bronze_key: str | None = None) -> None:
+def save_silver_data(
+    df: pd.DataFrame, output_path: str | Path, bronze_key: str | None = None
+) -> None:
     """Salva o DataFrame processado na camada Silver (MinIO e Local)."""
     logging.info("Iniciando a exportação dos dados (Silver).")
 
     # Serializa para JSON
     json_data = df.to_json(orient="records", indent=4, date_format="iso")
-    
+
     # 1. Salva no MinIO (se a chave do Bronze estiver disponível)
     if bronze_key:
         silver_key = bronze_key.replace("weather_data/", "weather_silver/", 1)
@@ -254,7 +258,9 @@ def save_silver_data(df: pd.DataFrame, output_path: str | Path, bronze_key: str 
     with open(path, "w", encoding="utf-8") as f:
         f.write(json_data)
 
-    logging.info(f"Dados exportados com sucesso localmente para {output_path}! Shape final: {df.shape}")
+    logging.info(
+        f"Dados exportados com sucesso localmente para {output_path}! Shape final: {df.shape}"
+    )
     print("\n[✔] Pipeline Concluído!")
     print(f"Shape salvo: {df.shape}")
     print("\nTipos de Dados:")
@@ -265,7 +271,7 @@ def save_silver_data(df: pd.DataFrame, output_path: str | Path, bronze_key: str 
 def run_pipeline(
     input_path: str | Path | None = None,
     output_path: str | Path | None = None,
-    bronze_key: str | None = None
+    bronze_key: str | None = None,
 ) -> pd.DataFrame:
     """Orquestra todas as máquinas da esteira de transformação."""
     logging.info("--- INICIANDO PIPELINE DE DADOS ---")
@@ -275,7 +281,9 @@ def run_pipeline(
         logging.info(f"Executando em modo Produção (Lendo do MinIO: {bronze_key})")
         dicionario_cru = load_from_bronze(bronze_key)
         if not dicionario_cru:
-            raise ValueError(f"Falha ao carregar dado do Bronze com a chave: {bronze_key}")
+            raise ValueError(
+                f"Falha ao carregar dado do Bronze com a chave: {bronze_key}"
+            )
     else:
         logging.info("Executando em modo Local (Lendo do disco)")
         input_path = input_path or DEFAULT_DATA_PATH
@@ -298,17 +306,21 @@ def run_pipeline(
 # --- ÁREA DE EXECUÇÃO ---
 if __name__ == "__main__":
     from src.storage import list_bronze_files
-    
+
     # Tentamos pegar o arquivo mais recente do MinIO para testar a esteira completa
     arquivos_bronze = list_bronze_files()
     bronze_key_recente = arquivos_bronze[-1] if arquivos_bronze else None
-    
+
     arquivo_entrada = DEFAULT_DATA_PATH
     arquivo_saida = Path(__file__).parent.parent / "data" / "weather_silver.json"
 
     if bronze_key_recente:
-        print(f"\n[Testando integração] Iniciando transformação a partir do MinIO: {bronze_key_recente}")
+        print(
+            f"\n[Testando integração] Iniciando transformação a partir do MinIO: {bronze_key_recente}"
+        )
     else:
         print("\n[Modo Local] Nenhum arquivo no MinIO. Rodando com fallback local.")
 
-    df_final = run_pipeline(arquivo_entrada, arquivo_saida, bronze_key=bronze_key_recente)
+    df_final = run_pipeline(
+        arquivo_entrada, arquivo_saida, bronze_key=bronze_key_recente
+    )

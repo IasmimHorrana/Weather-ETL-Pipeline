@@ -37,6 +37,7 @@ from src.alertas import verificar_e_disparar_alertas, _formatar_mensagem
 # Uma "fixture" é uma função que o pytest chama automaticamente e passa
 # como argumento para os testes. Evita repetição de código.
 
+
 @pytest.fixture
 def linha_base() -> dict:
     """Dicionário base de uma linha de dados de Salvador, situação NORMAL."""
@@ -45,8 +46,8 @@ def linha_base() -> dict:
         "pais": "BR",
         "temperatura_c": 28.0,
         "umidade_pct": 60,
-        "chuva_1h_mm": 0.5,        # Pouca chuva → NORMAL
-        "vento_velocidade_ms": 5.0, # Vento fraco → NORMAL
+        "chuva_1h_mm": 0.5,  # Pouca chuva → NORMAL
+        "vento_velocidade_ms": 5.0,  # Vento fraco → NORMAL
         "nivel_risco": "NORMAL",
         "data_hora": "2026-04-24T10:00:00-03:00",
     }
@@ -61,36 +62,45 @@ def df_normal(linha_base) -> pd.DataFrame:
 @pytest.fixture
 def df_critico() -> pd.DataFrame:
     """DataFrame com situação CRÍTICA (chuva >= 50mm → deve disparar alerta)."""
-    return pd.DataFrame([{
-        "cidade": "Salvador",
-        "pais": "BR",
-        "temperatura_c": 26.0,
-        "umidade_pct": 97,
-        "chuva_1h_mm": 55.0,         # Limiar CRÍTICO: >= 50mm
-        "vento_velocidade_ms": 18.0,  # Limiar CRÍTICO: >= 15 m/s
-        "nivel_risco": "CRÍTICO",
-        "data_hora": "2026-04-24T15:00:00-03:00",
-    }])
+    return pd.DataFrame(
+        [
+            {
+                "cidade": "Salvador",
+                "pais": "BR",
+                "temperatura_c": 26.0,
+                "umidade_pct": 97,
+                "chuva_1h_mm": 55.0,  # Limiar CRÍTICO: >= 50mm
+                "vento_velocidade_ms": 18.0,  # Limiar CRÍTICO: >= 15 m/s
+                "nivel_risco": "CRÍTICO",
+                "data_hora": "2026-04-24T15:00:00-03:00",
+            }
+        ]
+    )
 
 
 @pytest.fixture
 def df_alerta() -> pd.DataFrame:
     """DataFrame com situação ALERTA (chuva >= 25mm)."""
-    return pd.DataFrame([{
-        "cidade": "Salvador",
-        "pais": "BR",
-        "temperatura_c": 27.0,
-        "umidade_pct": 90,
-        "chuva_1h_mm": 30.0,         # Limiar ALERTA: >= 25mm
-        "vento_velocidade_ms": 10.0,
-        "nivel_risco": "ALERTA",
-        "data_hora": "2026-04-24T14:00:00-03:00",
-    }])
+    return pd.DataFrame(
+        [
+            {
+                "cidade": "Salvador",
+                "pais": "BR",
+                "temperatura_c": 27.0,
+                "umidade_pct": 90,
+                "chuva_1h_mm": 30.0,  # Limiar ALERTA: >= 25mm
+                "vento_velocidade_ms": 10.0,
+                "nivel_risco": "ALERTA",
+                "data_hora": "2026-04-24T14:00:00-03:00",
+            }
+        ]
+    )
 
 
 # ─────────────────────────────────────────────────────────────────
 # TESTES: Cada função test_ é um cenário independente
 # ─────────────────────────────────────────────────────────────────
+
 
 class TestVerificarEDispararAlertas:
     """Agrupa todos os testes da função principal do módulo."""
@@ -152,20 +162,30 @@ class TestVerificarEDispararAlertas:
         CENÁRIO: Pipeline expandido com Salvador (CRÍTICO) e Feira de Santana (NORMAL).
         ESPERADO: Apenas 1 alerta disparado (somente a cidade crítica).
         """
-        df_multi = pd.DataFrame([
-            {
-                "cidade": "Salvador", "pais": "BR", "temperatura_c": 26.0,
-                "umidade_pct": 97, "chuva_1h_mm": 55.0,
-                "vento_velocidade_ms": 18.0, "nivel_risco": "CRÍTICO",
-                "data_hora": "2026-04-24T15:00:00-03:00",
-            },
-            {
-                "cidade": "Feira de Santana", "pais": "BR", "temperatura_c": 32.0,
-                "umidade_pct": 45, "chuva_1h_mm": 0.0,
-                "vento_velocidade_ms": 3.0, "nivel_risco": "NORMAL",
-                "data_hora": "2026-04-24T15:00:00-03:00",
-            },
-        ])
+        df_multi = pd.DataFrame(
+            [
+                {
+                    "cidade": "Salvador",
+                    "pais": "BR",
+                    "temperatura_c": 26.0,
+                    "umidade_pct": 97,
+                    "chuva_1h_mm": 55.0,
+                    "vento_velocidade_ms": 18.0,
+                    "nivel_risco": "CRÍTICO",
+                    "data_hora": "2026-04-24T15:00:00-03:00",
+                },
+                {
+                    "cidade": "Feira de Santana",
+                    "pais": "BR",
+                    "temperatura_c": 32.0,
+                    "umidade_pct": 45,
+                    "chuva_1h_mm": 0.0,
+                    "vento_velocidade_ms": 3.0,
+                    "nivel_risco": "NORMAL",
+                    "data_hora": "2026-04-24T15:00:00-03:00",
+                },
+            ]
+        )
 
         with patch("src.alertas._enviar_telegram", return_value=True) as mock_telegram:
             resultado = verificar_e_disparar_alertas(df_multi)
@@ -195,16 +215,18 @@ class TestFormatarMensagem:
         """
         ESPERADO: Nível CRÍTICO usa o emoji 🚨.
         """
-        row = pd.Series({
-            "nivel_risco": "CRÍTICO",
-            "cidade": "Salvador",
-            "pais": "BR",
-            "chuva_1h_mm": 55.0,
-            "vento_velocidade_ms": 18.0,
-            "umidade_pct": 97,
-            "temperatura_c": 26.0,
-            "data_hora": "2026-04-24T15:00:00-03:00",
-        })
+        row = pd.Series(
+            {
+                "nivel_risco": "CRÍTICO",
+                "cidade": "Salvador",
+                "pais": "BR",
+                "chuva_1h_mm": 55.0,
+                "vento_velocidade_ms": 18.0,
+                "umidade_pct": 97,
+                "temperatura_c": 26.0,
+                "data_hora": "2026-04-24T15:00:00-03:00",
+            }
+        )
         mensagem = _formatar_mensagem(row)
         assert "🚨" in mensagem
         assert "CRÍTICO" in mensagem
@@ -214,16 +236,18 @@ class TestFormatarMensagem:
         """
         ESPERADO: Nível ALERTA usa o emoji ⚠️.
         """
-        row = pd.Series({
-            "nivel_risco": "ALERTA",
-            "cidade": "Salvador",
-            "pais": "BR",
-            "chuva_1h_mm": 30.0,
-            "vento_velocidade_ms": 10.0,
-            "umidade_pct": 90,
-            "temperatura_c": 27.0,
-            "data_hora": "2026-04-24T14:00:00-03:00",
-        })
+        row = pd.Series(
+            {
+                "nivel_risco": "ALERTA",
+                "cidade": "Salvador",
+                "pais": "BR",
+                "chuva_1h_mm": 30.0,
+                "vento_velocidade_ms": 10.0,
+                "umidade_pct": 90,
+                "temperatura_c": 27.0,
+                "data_hora": "2026-04-24T14:00:00-03:00",
+            }
+        )
         mensagem = _formatar_mensagem(row)
         assert "⚠️" in mensagem
         assert "ALERTA" in mensagem

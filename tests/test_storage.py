@@ -13,6 +13,7 @@ from src.storage import (
     list_silver_files,
 )
 
+
 def _make_client_error(code: str) -> ClientError:
     """Cria um ClientError simulado com o código de erro especificado."""
     return ClientError(
@@ -39,8 +40,8 @@ def dados_brutos() -> dict:
 # 1. TESTES: _build_bronze_key
 # ─────────────────────────────────────────────
 
-class TestBuildBronzeKey:
 
+class TestBuildBronzeKey:
     def test_retorna_string_nao_vazia(self):
         key = _build_bronze_key("salvador")
         assert isinstance(key, str) and len(key) > 0
@@ -50,7 +51,7 @@ class TestBuildBronzeKey:
         key = _build_bronze_key("salvador")
         partes = key.split("/")
         assert partes[0] == "weather_data"
-        assert len(partes[1]) == 10        # YYYY-MM-DD
+        assert len(partes[1]) == 10  # YYYY-MM-DD
         assert partes[2].endswith("_salvador.json")
 
     def test_cidade_lowercased(self):
@@ -66,8 +67,8 @@ class TestBuildBronzeKey:
 # 2. TESTES: upload_to_bronze
 # ─────────────────────────────────────────────
 
-class TestUploadToBronze:
 
+class TestUploadToBronze:
     def test_retorna_object_key_em_sucesso(self, mock_s3_client, dados_brutos):
         mock_s3_client.head_bucket.return_value = {}
         mock_s3_client.put_object.return_value = {}
@@ -113,13 +114,17 @@ class TestUploadToBronze:
 # 3. TESTES: download_from_bronze
 # ─────────────────────────────────────────────
 
-class TestDownloadFromBronze:
 
+class TestDownloadFromBronze:
     def test_retorna_dicionario_em_sucesso(self, mock_s3_client, dados_brutos):
         json_bytes = json.dumps(dados_brutos).encode("utf-8")
-        mock_s3_client.get_object.return_value = {"Body": MagicMock(read=lambda: json_bytes)}
+        mock_s3_client.get_object.return_value = {
+            "Body": MagicMock(read=lambda: json_bytes)
+        }
         with patch("src.storage._get_s3_client", return_value=mock_s3_client):
-            resultado = download_from_bronze("weather_data/2026-04-30/10-00-00_salvador.json")
+            resultado = download_from_bronze(
+                "weather_data/2026-04-30/10-00-00_salvador.json"
+            )
         assert isinstance(resultado, dict)
         assert resultado["name"] == "Salvador"
 
@@ -137,8 +142,8 @@ class TestDownloadFromBronze:
 # 4. TESTES: upload_to_silver
 # ─────────────────────────────────────────────
 
-class TestUploadToSilver:
 
+class TestUploadToSilver:
     def test_retorna_object_key_em_sucesso(self, mock_s3_client):
         mock_s3_client.head_bucket.return_value = {}
         mock_s3_client.put_object.return_value = {}
@@ -165,15 +170,17 @@ class TestUploadToSilver:
 # 5. TESTES: download_from_silver
 # ─────────────────────────────────────────────
 
-class TestDownloadFromSilver:
 
+class TestDownloadFromSilver:
     def test_retorna_string_json_em_sucesso(self, mock_s3_client):
         json_str = '[{"cidade": "Salvador", "temperatura_c": 28.5}]'
         mock_s3_client.get_object.return_value = {
             "Body": MagicMock(read=lambda: json_str.encode("utf-8"))
         }
         with patch("src.storage._get_s3_client", return_value=mock_s3_client):
-            resultado = download_from_silver("weather_silver/2026-04-30/10-00-00_salvador.json")
+            resultado = download_from_silver(
+                "weather_silver/2026-04-30/10-00-00_salvador.json"
+            )
         assert isinstance(resultado, str)
         assert json.loads(resultado)[0]["cidade"] == "Salvador"
 
@@ -191,8 +198,8 @@ class TestDownloadFromSilver:
 # 6. TESTES: list_bronze_files / list_silver_files
 # ─────────────────────────────────────────────
 
-class TestListFiles:
 
+class TestListFiles:
     def _mock_paginator(self, client, keys: list):
         page = {"Contents": [{"Key": k} for k in keys]} if keys else {}
         paginator = MagicMock()

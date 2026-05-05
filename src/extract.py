@@ -82,4 +82,3 @@ if __name__ == "__main__":
         print(f"   Verifique em: http://localhost:9001 → weather-bronze → {key}")
     else:
         print("\n❌ Falha na coleta. Verifique os logs acima.")
-
