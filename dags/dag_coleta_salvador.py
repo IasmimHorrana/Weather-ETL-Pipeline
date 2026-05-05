@@ -17,20 +17,6 @@ DEFAULT_ARGS = {
     "email_on_failure": False,
 }
 
-# URL da API construída a partir das variáveis de ambiente
-_API_KEY = os.getenv("API_KEY", "")
-_CITY = os.getenv("OPENWEATHER_CITY", "Salvador")
-OPENWEATHER_URL = (
-    f"https://api.openweathermap.org/data/2.5/weather"
-    f"?q={_CITY},BR&appid={_API_KEY}&units=metric&lang=pt_br"
-)
-
-# URL do PostgreSQL (weather_db — dados de negócio)
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://weather_user:weather_pass@postgres:5432/weather_db",
-)
-
 
 # =============================================================
 # TASK 1 — Extração: OpenWeather API → MinIO (Bronze)
@@ -42,7 +28,14 @@ def task_extract(**context: typing.Any) -> None:
     """
     from src.extract import extract_weather_data
 
-    _, bronze_key = extract_weather_data(base_url=OPENWEATHER_URL)
+    api_key = os.getenv("API_KEY", "")
+    city = os.getenv("OPENWEATHER_CITY", "Salvador")
+    openweather_url = (
+        f"https://api.openweathermap.org/data/2.5/weather"
+        f"?q={city},BR&appid={api_key}&units=metric&lang=pt_br"
+    )
+
+    _, bronze_key = extract_weather_data(base_url=openweather_url)
 
     if not bronze_key:
         raise RuntimeError("Extração falhou: upload para o MinIO retornou None.")
@@ -93,7 +86,12 @@ def task_load(**context: typing.Any) -> None:
     if not silver_key:
         raise ValueError("silver_key não encontrada no XCom.")
 
-    linhas = load_silver_to_postgres(db_url=DATABASE_URL, silver_key=silver_key)
+    db_url = os.getenv(
+        "DATABASE_URL",
+        "postgresql://weather_user:weather_pass@postgres:5432/weather_db",
+    )
+
+    linhas = load_silver_to_postgres(db_url=db_url, silver_key=silver_key)
     logging.info(f"[load] {linhas} linha(s) inserida(s) no histórico.")
 
 
@@ -107,7 +105,12 @@ def task_gold_views(**context: typing.Any) -> None:
     """
     from src.gold import apply_gold_views
 
-    views = apply_gold_views(db_url=DATABASE_URL)
+    db_url = os.getenv(
+        "DATABASE_URL",
+        "postgresql://weather_user:weather_pass@postgres:5432/weather_db",
+    )
+
+    views = apply_gold_views(db_url=db_url)
     logging.info(f"[gold] {len(views)} view(s) aplicada(s): {views}")
 
 
@@ -177,11 +180,10 @@ with DAG(
         python_callable=task_alertas,
     )
 
-    # Pipeline sequencial — cada task depende da anterior
-    (
-        extract_bronze
-        >> transform_silver
-        >> load_historico
-        >> apply_gold
-        >> dispara_alertas
-    )
+    # Pipeline com ramos independentes:
+    # 1. Pipeline de Dados: Extrai -> Transforma -> Carrega no BD -> Atualiza Views
+    # 2. Pipeline de Ação:  Extrai -> Transforma -> Dispara Alertas (nao depende do BD)
+    extract_bronze >> transform_silver
+
+    transform_silver >> load_historico >> apply_gold
+    transform_silver >> dispara_alertas
