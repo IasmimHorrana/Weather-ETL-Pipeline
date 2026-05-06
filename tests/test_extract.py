@@ -9,34 +9,36 @@ from src.extract import _save_local_fallback, extract_weather_data
 @pytest.fixture
 def payload_valido() -> dict:
     """
-    Simula um payload realista da OpenWeather API (versão simplificada).
+    Simula um payload realista da Open-Meteo API.
     Este é o formato que nossa função espera receber — com os campos
     que o transform.py vai precisar depois.
     """
     return {
-        "name": "Salvador",
-        "cod": 200,
-        "coord": {"lon": -38.5, "lat": -12.97},
-        "weather": [
-            {"id": 500, "main": "Rain", "description": "chuva leve", "icon": "10d"}
-        ],
-        "main": {
-            "temp": 26.48,
-            "feels_like": 27.2,
-            "temp_min": 25.0,
-            "temp_max": 28.0,
-            "pressure": 1012,
-            "humidity": 85,
+        "latitude": -12.9711,
+        "longitude": -38.5108,
+        "generationtime_ms": 0.05,
+        "utc_offset_seconds": -10800,
+        "timezone": "America/Bahia",
+        "timezone_abbreviation": "-03",
+        "elevation": 10.0,
+        "current_units": {
+            "time": "unixtime",
+            "interval": "seconds",
+            "temperature_2m": "°C",
+            "relative_humidity_2m": "%",
+            "rain": "mm",
+            "weather_code": "wmo code",
+            "wind_speed_10m": "km/h"
         },
-        "wind": {"speed": 6.82, "deg": 161, "gust": 7.54},
-        "clouds": {"all": 57},
-        "rain": {"1h": 0.37},
-        "visibility": 6424,
-        "dt": 1776880187,
-        "sys": {"country": "BR", "sunrise": 1776847219, "sunset": 1776889466},
-        "timezone": -10800,
-        "id": 3450554,
-        "base": "stations",
+        "current": {
+            "time": 1714953600,
+            "interval": 900,
+            "temperature_2m": 27.5,
+            "relative_humidity_2m": 82,
+            "rain": 0.0,
+            "weather_code": 3,
+            "wind_speed_10m": 18.2
+        }
     }
 
 
@@ -76,10 +78,8 @@ class TestExtractWeatherData:
         """
         CENÁRIO: API responde 200 OK e upload ao MinIO funciona.
         ESPERADO: Retorna (dict_com_dados, "alguma/chave.json").
-
-        A função agora retorna uma tupla (dados, object_key).
         """
-        bronze_key = "weather_data/2026-04-30/10-00-00_salvador.json"
+        bronze_key = "weather_data/2026-05-01/10-00-00_salvador.json"
 
         with patch("src.extract.requests.get", return_value=mock_response_sucesso):
             with patch(
@@ -88,7 +88,7 @@ class TestExtractWeatherData:
                 dados, key = extract_weather_data("http://url-falsa.com")
 
         assert isinstance(dados, dict)
-        assert dados.get("name") == "Salvador"
+        assert "current" in dados
         assert key == bronze_key
         mock_upload.assert_called_once()
 
@@ -98,10 +98,7 @@ class TestExtractWeatherData:
         """
         CENÁRIO: Extração bem-sucedida.
         ESPERADO: upload_to_bronze é chamado com o dicionário retornado pela API
-        e com city='Salvador' (minusculo no nome da cidade).
-
-        Valida o CONTRATO entre extract.py e storage.py:
-        os dados brutos chegam intactos ao MinIO.
+        e com city='Salvador'.
         """
         with patch("src.extract.requests.get", return_value=mock_response_sucesso):
             with patch(
@@ -113,23 +110,20 @@ class TestExtractWeatherData:
         dados_enviados = (
             call_kwargs[0][0] if call_kwargs[0] else call_kwargs[1].get("data")
         )
-        assert dados_enviados.get("name") == "Salvador"
+        assert "current" in dados_enviados
+        assert call_kwargs[1].get("city") == "Salvador"
 
     def test_minio_indisponivel_retorna_dados_e_none(self, mock_response_sucesso):
         """
-        CENÁRIO: API da OpenWeather responde OK, mas o MinIO está fora do ar.
+        CENÁRIO: API da Open-Meteo responde OK, mas o MinIO está fora do ar.
         ESPERADO: Retorna (dados, None) — dados chegaram, mas não foram persistidos.
-
-        O pipeline deve continuar (e logar warning), pois os dados ainda
-        podem ser usados pelo transform se o orquestrador passar os dados
-        diretamente em memória.
         """
         with patch("src.extract.requests.get", return_value=mock_response_sucesso):
             with patch("src.extract.upload_to_bronze", return_value=None):
                 dados, key = extract_weather_data("http://url-falsa.com")
 
         assert isinstance(dados, dict)
-        assert dados.get("name") == "Salvador"
+        assert "current" in dados
         assert key is None
 
     def test_erro_de_rede_retorna_tuple_vazio(self):
@@ -160,25 +154,12 @@ class TestExtractWeatherData:
         assert dados == {}
         assert key is None
 
-    def test_status_401_retorna_tuple_vazio(self):
+    def test_status_400_retorna_tuple_vazio(self):
         """
-        CENÁRIO: Chave de API inválida ou expirada (HTTP 401 Unauthorized).
+        CENÁRIO: Erro na chamada da API (ex: coordenadas faltantes - HTTP 400).
         ESPERADO: Retorna ({}, None).
         """
-        mock = _make_error_response(401, "Invalid API key")
-
-        with patch("src.extract.requests.get", return_value=mock):
-            dados, key = extract_weather_data("http://url-falsa.com")
-
-        assert dados == {}
-        assert key is None
-
-    def test_status_404_retorna_tuple_vazio(self):
-        """
-        CENÁRIO: Cidade não encontrada na API (HTTP 404 Not Found).
-        ESPERADO: Retorna ({}, None).
-        """
-        mock = _make_error_response(404, "city not found")
+        mock = _make_error_response(400, "Bad Request")
 
         with patch("src.extract.requests.get", return_value=mock):
             dados, key = extract_weather_data("http://url-falsa.com")
@@ -188,7 +169,7 @@ class TestExtractWeatherData:
 
     def test_status_500_retorna_tuple_vazio(self):
         """
-        CENÁRIO: Servidor da OpenWeather está com erro interno (HTTP 500).
+        CENÁRIO: Servidor da Open-Meteo está com erro interno (HTTP 500).
         ESPERADO: Retorna ({}, None).
         """
         mock = _make_error_response(500, "Internal Server Error")
@@ -214,18 +195,31 @@ class TestExtractWeatherData:
         assert dados == {}
         assert key is None
 
-    def test_retorno_contem_campo_name(self, mock_response_sucesso):
+    def test_resposta_sem_bloco_current_retorna_tuple_vazio(self):
+        """
+        CENÁRIO: API responde 200, mas sem a tag 'current'.
+        ESPERADO: Retorna ({}, None) (defesa contra JSON malformado).
+        """
+        mock = MagicMock()
+        mock.raise_for_status.return_value = None
+        mock.json.return_value = {"latitude": -12.0}
+
+        with patch("src.extract.requests.get", return_value=mock):
+            dados, key = extract_weather_data("http://url-falsa.com")
+
+        assert dados == {}
+        assert key is None
+
+    def test_retorno_contem_bloco_current(self, mock_response_sucesso):
         """
         CENÁRIO: Extração bem-sucedida.
-        ESPERADO: O dict retornado contém o campo 'name' (cidade).
-
-        Valida o CONTRATO da função com o transform.py.
+        ESPERADO: O dict retornado contém o bloco 'current'.
         """
         with patch("src.extract.requests.get", return_value=mock_response_sucesso):
             with patch("src.extract.upload_to_bronze", return_value="chave.json"):
                 dados, _ = extract_weather_data("http://url-falsa.com")
 
-        assert "name" in dados
+        assert "current" in dados
 
 
 class TestSaveLocalFallback:
@@ -252,7 +246,7 @@ class TestSaveLocalFallback:
         _save_local_fallback(payload_valido, destino)
 
         conteudo = json.loads(destino.read_text(encoding="utf-8"))
-        assert conteudo.get("name") == "Salvador"
+        assert conteudo.get("latitude") == -12.9711
 
     def test_cria_diretorio_pai_se_nao_existir(self, tmp_path, payload_valido):
         """

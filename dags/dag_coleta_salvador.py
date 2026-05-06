@@ -17,32 +17,23 @@ DEFAULT_ARGS = {
     "email_on_failure": False,
 }
 
-
 # =============================================================
-# TASK 1 — Extração: OpenWeather API → MinIO (Bronze)
+# TASK 1 — Extração: API → MinIO (Bronze)
 # =============================================================
 def task_extract(**context: typing.Any) -> None:
     """
     Chama extract_weather_data() e empurra o bronze_key via XCom
     para que a task seguinte saiba qual arquivo processar.
     """
-    from src.extract import extract_weather_data
+    from src.extract import OPEN_METEO_URL, extract_weather_data
 
-    api_key = os.getenv("API_KEY", "")
-    city = os.getenv("OPENWEATHER_CITY", "Salvador")
-    openweather_url = (
-        f"https://api.openweathermap.org/data/2.5/weather"
-        f"?q={city},BR&appid={api_key}&units=metric&lang=pt_br"
-    )
-
-    _, bronze_key = extract_weather_data(base_url=openweather_url)
+    _, bronze_key = extract_weather_data(base_url=OPEN_METEO_URL)
 
     if not bronze_key:
         raise RuntimeError("Extração falhou: upload para o MinIO retornou None.")
 
     logging.info(f"[extract] Bronze key gerada: {bronze_key}")
     context["ti"].xcom_push(key="bronze_key", value=bronze_key)
-
 
 # =============================================================
 # TASK 2 — Transformação: MinIO Bronze → MinIO Silver
@@ -148,10 +139,10 @@ def task_alertas(**context: typing.Any) -> None:
 # =============================================================
 with DAG(
     dag_id="coleta_salvador",
-    description="ETL de dados climáticos: OpenWeather → MinIO → PostgreSQL → Alertas",
-    schedule_interval="@hourly",  # Coleta a cada hora
+    description="ETL de dados climáticos: Open-Meteo → MinIO  PostgreSQL → Alertas",
+    schedule_interval="@hourly",    
     start_date=datetime(2026, 5, 1),
-    catchup=False,  # Não reprocessa datas passadas ao ligar
+    catchup=False,  
     default_args=DEFAULT_ARGS,
     tags=["weather", "etl", "salvador"],
 ) as dag:
