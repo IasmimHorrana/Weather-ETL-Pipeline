@@ -6,10 +6,9 @@ SELECT
     nivel_risco,
     chuva_1h_mm,
     vento_velocidade_ms,
-    vento_rajada_ms,
     umidade_pct,
     temperatura_c,
-    descricao_clima,
+    condicao_clima,
     coletado_em
 FROM tb_weather_history
 WHERE nivel_risco IN ('CRÍTICO', 'ALERTA')
