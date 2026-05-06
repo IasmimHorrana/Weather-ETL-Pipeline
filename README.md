@@ -1,6 +1,6 @@
 # ⛈️ Monitoramento de Risco e Chuvas — Salvador ETL
 
-Pipeline de engenharia de dados focado em **identificação de padrões climáticos críticos (chuvas fortes e vendavais)**. O sistema é orquestrado pelo **Apache Airflow**, coleta dados da [OpenWeather API](https://openweathermap.org/api) a cada hora, aplica a **Matriz de Risco do INMET** e dispara alertas automáticos via **Telegram** em caso de emergência climática.
+Pipeline de engenharia de dados focado em **identificação de padrões climáticos críticos (chuvas fortes e vendavais)**. O sistema é orquestrado pelo **Apache Airflow**, coleta dados da [Open-Meteo API](https://open-meteo.com/) a cada hora, aplica a **Matriz de Risco do INMET** e dispara alertas automáticos via **Telegram** em caso de emergência climática.
 
 > **Status do Projeto:** Todas as Fases (1 a 7) concluídas! O projeto conta com Arquitetura Medallion completa (MinIO → PostgreSQL), Orquestração (Airflow), Alertas (Telegram), Dashboard de BI (Metabase) e Pipeline de CI rigoroso com foco em qualidade.
 
@@ -30,7 +30,7 @@ Ir além do simples "aplicativo de previsão do tempo" para criar um **monitoram
                     └──────────────┬──────────────┘
                                    │ orquestra
                                    ▼
-OpenWeather API
+Open-Meteo API
       │
       ▼
   extract.py          ← Requisição HTTP + validação + retry (Tenacity)
@@ -92,7 +92,7 @@ cd Weather-ETL-Pipeline
 ```bash
 cp config/.env.example config/.env
 ```
-Preencha o arquivo `config/.env` com a sua `API_KEY` do OpenWeatherMap e as credenciais do Telegram (Bot Token e Chat ID) para ativar o fluxo de alertas.
+Preencha o arquivo `config/.env` com as credenciais do Telegram (Bot Token e Chat ID) para ativar o fluxo de alertas. (A API Open-Meteo é aberta e não exige chave de autenticação).
 
 ### 3. Suba a Infraestrutura Completa
 
