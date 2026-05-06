@@ -2,9 +2,7 @@
 
 -- Este arquivo é executado AUTOMATICAMENTE pelo contêiner do
 -- PostgreSQL na PRIMEIRA vez que ele sobe (quando o volume
--- ainda está vazio). Aqui que criamos o banco e a tabela,
--- garantindo que a infra já nasce pronta para receber dados.
-
+-- ainda está vazio)
 
 -- Conecta ao banco 'weather_db' para criar os objetos dentro dele.
 -- (Este banco já é criado automaticamente pelo Docker Compose via variável POSTGRES_DB)
