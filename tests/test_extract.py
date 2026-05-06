@@ -28,7 +28,7 @@ def payload_valido() -> dict:
             "relative_humidity_2m": "%",
             "rain": "mm",
             "weather_code": "wmo code",
-            "wind_speed_10m": "km/h"
+            "wind_speed_10m": "km/h",
         },
         "current": {
             "time": 1714953600,
@@ -37,8 +37,8 @@ def payload_valido() -> dict:
             "relative_humidity_2m": 82,
             "rain": 0.0,
             "weather_code": 3,
-            "wind_speed_10m": 18.2
-        }
+            "wind_speed_10m": 18.2,
+        },
     }
 
 

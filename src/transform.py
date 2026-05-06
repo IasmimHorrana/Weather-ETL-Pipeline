@@ -81,16 +81,16 @@ def flatten_to_dataframe(raw_data: dict) -> pd.DataFrame:
         raise ValueError("Campo 'current' ausente no JSON da Open-Meteo.")
 
     row = {
-        "cidade":                "Salvador",   # Open-Meteo não retorna nome
-        "pais":                  "BR",
-        "latitude":              raw_data.get("latitude"),
-        "longitude":             raw_data.get("longitude"),
-        "data_hora":             current.get("time"),
-        "temperatura_c":         current.get("temperature_2m"),
-        "umidade_pct":           current.get("relative_humidity_2m"),
-        "chuva_1h_mm":           current.get("rain", 0.0),
-        "weather_code":          current.get("weather_code"),
-        "vento_velocidade_ms":   round(current.get("wind_speed_10m", 0.0) / 3.6, 2),
+        "cidade": "Salvador",  # Open-Meteo não retorna nome
+        "pais": "BR",
+        "latitude": raw_data.get("latitude"),
+        "longitude": raw_data.get("longitude"),
+        "data_hora": current.get("time"),
+        "temperatura_c": current.get("temperature_2m"),
+        "umidade_pct": current.get("relative_humidity_2m"),
+        "chuva_1h_mm": current.get("rain", 0.0),
+        "weather_code": current.get("weather_code"),
+        "vento_velocidade_ms": round(current.get("wind_speed_10m", 0.0) / 3.6, 2),
     }
 
     df = pd.DataFrame([row])
@@ -124,9 +124,7 @@ def translate_weather_code(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
     if "weather_code" in df.columns:
-        df["condicao_clima"] = (
-            df["weather_code"].map(WMO_CODES).fillna("Desconhecido")
-        )
+        df["condicao_clima"] = df["weather_code"].map(WMO_CODES).fillna("Desconhecido")
         df = df.drop(columns=["weather_code"])
 
     return df
@@ -155,9 +153,13 @@ def calculate_risk_level(df: pd.DataFrame) -> pd.DataFrame:
     condicoes = [
         (chuva >= REGRAS_RISCO["chuva_critica_mm"])
         | (vento >= REGRAS_RISCO["vento_critico_ms"])
-        | ((chuva >= REGRAS_RISCO["chuva_alerta_mm"]) & (vento >= REGRAS_RISCO["vento_alerta_ms"])),
+        | (
+            (chuva >= REGRAS_RISCO["chuva_alerta_mm"])
+            & (vento >= REGRAS_RISCO["vento_alerta_ms"])
+        ),
         (chuva >= REGRAS_RISCO["chuva_alerta_mm"]),
-        (chuva >= REGRAS_RISCO["chuva_atencao_mm"]) & (umidade >= REGRAS_RISCO["umidade_atencao_pct"]),
+        (chuva >= REGRAS_RISCO["chuva_atencao_mm"])
+        & (umidade >= REGRAS_RISCO["umidade_atencao_pct"]),
     ]
     valores = ["CRÍTICO", "ALERTA", "ATENÇÃO"]
 
@@ -207,11 +209,11 @@ def run_pipeline(
         input_path = input_path or DEFAULT_DATA_PATH
         dicionario_cru = load_raw_json(input_path)
 
-    df_achatado      = flatten_to_dataframe(dicionario_cru)
-    df_com_datas     = convert_timestamps_to_local(df_achatado)
-    df_com_codigo    = translate_weather_code(df_com_datas)   # etapa nova
-    df_com_chuva     = validate_rain_schema(df_com_codigo)
-    df_enriquecido   = calculate_risk_level(df_com_chuva)
+    df_achatado = flatten_to_dataframe(dicionario_cru)
+    df_com_datas = convert_timestamps_to_local(df_achatado)
+    df_com_codigo = translate_weather_code(df_com_datas)  # etapa nova
+    df_com_chuva = validate_rain_schema(df_com_codigo)
+    df_enriquecido = calculate_risk_level(df_com_chuva)
 
     output_path = output_path or (DEFAULT_DATA_PATH.parent / "weather_silver.json")
     save_silver_data(df_enriquecido, output_path, bronze_key)

@@ -17,6 +17,7 @@ DEFAULT_ARGS = {
     "email_on_failure": False,
 }
 
+
 # =============================================================
 # TASK 1 — Extração: API → MinIO (Bronze)
 # =============================================================
@@ -34,6 +35,7 @@ def task_extract(**context: typing.Any) -> None:
 
     logging.info(f"[extract] Bronze key gerada: {bronze_key}")
     context["ti"].xcom_push(key="bronze_key", value=bronze_key)
+
 
 # =============================================================
 # TASK 2 — Transformação: MinIO Bronze → MinIO Silver
@@ -140,9 +142,9 @@ def task_alertas(**context: typing.Any) -> None:
 with DAG(
     dag_id="coleta_salvador",
     description="ETL de dados climáticos: Open-Meteo → MinIO  PostgreSQL → Alertas",
-    schedule_interval="@hourly",    
+    schedule_interval="@hourly",
     start_date=datetime(2026, 5, 1),
-    catchup=False,  
+    catchup=False,
     default_args=DEFAULT_ARGS,
     tags=["weather", "etl", "salvador"],
 ) as dag:

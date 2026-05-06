@@ -1,7 +1,6 @@
 import json
 from unittest.mock import patch
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -33,8 +32,8 @@ def raw_json_completo() -> dict:
             "relative_humidity_2m": 85,
             "rain": 0.37,
             "weather_code": 61,
-            "wind_speed_10m": 18.0  # (18.0 / 3.6 = 5.0 m/s)
-        }
+            "wind_speed_10m": 18.0,  # (18.0 / 3.6 = 5.0 m/s)
+        },
     }
 
 
@@ -163,6 +162,7 @@ class TestConvertTimestampsToLocal:
 # ─────────────────────────────────────────────
 # 4. TESTES: translate_weather_code
 # ─────────────────────────────────────────────
+
 
 class TestTranslateWeatherCode:
     def test_traducao_valida(self, df_achatado):
