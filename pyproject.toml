@@ -1,7 +1,7 @@
 [project]
 name = "weather-api"
 version = "0.1.0"
-description = "Pipeline ETL de dados climáticos — OpenWeather → MinIO → PostgreSQL"
+description = "Pipeline ETL de dados climáticos — Open-Meteo → MinIO → PostgreSQL"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
